@@ -1,902 +1,395 @@
-import React, { useState, useEffect, useMemo, Suspense, useRef } from "react";
-import { Canvas, createPortal, useThree } from "@react-three/fiber";
-import { useGLTF, Environment, Center, OrbitControls, Decal, Html } from "@react-three/drei";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { Canvas, useFrame } from "@react-three/fiber";
+import { useGLTF, OrbitControls, Center, Environment, AccumulativeShadows, RandomizedLight } from "@react-three/drei";
+import { Stage, Layer, Image as KonvaImage, Transformer } from "react-konva";
 import * as THREE from "three";
+import useImage from "use-image";
+import { Upload, Layers, Box, Image as ImageIcon, MousePointer2, Save } from "lucide-react";
+import { v4 as uuidv4 } from "uuid";
 
-/* =========================================
-   1. UTILS
-   ========================================= */
-const calculateRotation = (normal, userRotationZ) => {
-    const dummy = new THREE.Object3D();
-    dummy.lookAt(normal);
-    dummy.rotateZ(userRotationZ);
-    return [dummy.rotation.x, dummy.rotation.y, dummy.rotation.z];
-};
+/**
+ * --- OPTIMIZED TEXTURE HOOK ---
+ * This is the secret to performance. It debounces updates so the screen doesn't freeze.
+ */
+function useCanvasTexture(canvasRef, version) {
+  const texture = useMemo(() => {
+    if (!canvasRef.current) return null;
+    const t = new THREE.CanvasTexture(canvasRef.current);
+    t.flipY = false;
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.minFilter = THREE.LinearFilter;
+    return t;
+  }, [canvasRef.current]); // Only create once
 
-/* =========================================
-   2. COMPONENTS
-   ========================================= */
-const SmartDecal = ({ mesh, data, isSelected }) => {
-    const { url, pos, normal, scale, rotation: userRotation } = data;
-    const [texture, setTexture] = useState(null);
-    const { gl } = useThree();
+  // Update texture only when 'version' changes (Drag End), not every frame
+  useEffect(() => {
+    if (texture && canvasRef.current) {
+      texture.needsUpdate = true;
+    }
+  }, [texture, version]);
 
-    // Default scale if not array: [0.4, 0.4, 0.2]
-    const scaleVec = Array.isArray(scale) ? scale : [scale ?? 0.4, scale ?? 0.4, 0.2];
+  return texture;
+}
 
-    useEffect(() => {
-        if (!url) return;
-        new THREE.TextureLoader().load(url, (tex) => {
-            tex.colorSpace = THREE.SRGBColorSpace;
-            tex.anisotropy = gl.capabilities.getMaxAnisotropy();
-            setTexture(tex);
-        });
-    }, [url, gl]);
-
-    const finalRotation = useMemo(() => {
-        const n = normal ? new THREE.Vector3(...normal) : new THREE.Vector3(0, 0, 1);
-        return calculateRotation(n, userRotation ?? 0);
-    }, [normal, userRotation]);
-
-    if (!pos || !texture) return null;
-
-    return (
-        <Decal
-            position={pos}
-            rotation={finalRotation}
-            scale={scaleVec}
-        >
-            <meshStandardMaterial 
-                map={texture}
-                transparent
-                polygonOffset
-                polygonOffsetFactor={-4}
-                depthTest={true}
-                depthWrite={false}
-                roughness={0.2}
-                emissive={isSelected ? "#222" : "#000"}
-            />
-        </Decal>
-    );
-};
-
-/* =========================================
-   3. MODEL VIEWER (INSPECTOR MODE)
-   ========================================= */
-const ModelViewer = ({ 
-  url, 
-  setControlsEnabled, 
-  allowedMeshNames, 
-  decals,
-  setDecals,
-  zoneSettings, 
-  setZoneSettings,
-  activeVariants, 
-  selectedMeshName,
-  setSelectedMeshName,
-  onLoadHierarchy,
-  showWireframe,
-  meshRefs,     
-  setMeshRefs,
-  mode,             
-  toggleAllowedMesh 
-}) => {
-  const gltf = useGLTF(url);
-  const [isDragging, setIsDragging] = useState(false);
-  const [hoveredMesh, setHoveredMesh] = useState(null);
+/**
+ * --- 3D MESH COMPONENT ---
+ * Handles individual parts of the shirt
+ */
+const SmartMesh = ({ node, config, activeId, onClick }) => {
+  // Use the optimized texture
+  const texture = useCanvasTexture(config.canvasRef, config.version);
   
-  const [matTextures, setMatTextures] = useState({});
+  // Clone material to avoid conflicts
+  const material = useMemo(() => {
+    const mat = node.material.clone();
+    mat.color = new THREE.Color(0xffffff); // Pure white base
+    mat.roughness = 0.5;
+    return mat;
+  }, [node.material]);
 
+  // Apply texture if it exists
   useEffect(() => {
-      const handleGlobalPointerUp = () => {
-          setIsDragging(false);
-          setControlsEnabled(true);
-      };
-      window.addEventListener('pointerup', handleGlobalPointerUp);
-      return () => window.removeEventListener('pointerup', handleGlobalPointerUp);
-  }, [setControlsEnabled]);
-
-  // Load Material Textures
-  useEffect(() => {
-    Object.keys(zoneSettings).forEach(meshName => {
-        const settings = zoneSettings[meshName];
-        if (settings?.material && settings.texture) {
-            if (!matTextures[meshName] || matTextures[meshName].sourceFile !== settings.texture) {
-                new THREE.TextureLoader().load(settings.texture, (tex) => {
-                    tex.colorSpace = THREE.SRGBColorSpace;
-                    tex.flipY = false;
-                    tex.sourceFile = settings.texture;
-                    setMatTextures(prev => ({ ...prev, [meshName]: tex }));
-                });
-            }
-        }
-    });
-  }, [zoneSettings, matTextures]);
-
-  // Main Scene Traversal
-  useEffect(() => {
-    if (!gltf) return;
-    const refs = {};
-    const allMeshNames = [];
-
-    gltf.scene.traverse((child) => {
-      if (child.isMesh) {
-        allMeshNames.push(child.name);
-        refs[child.name] = child;
-        
-        const isAllowed = allowedMeshNames.includes(child.name);
-        const settings = zoneSettings[child.name];
-        
-        // --- 1. VARIANT VISIBILITY LOGIC ---
-        let isVisible = true;
-        if (settings?.variantGroup) {
-            const activeInGroup = activeVariants[settings.variantGroup];
-            if (activeInGroup && activeInGroup !== child.name) {
-                isVisible = false;
-            }
-        }
-        child.visible = isVisible;
-
-        // --- 2. MATERIAL/VISUAL LOGIC ---
-        if (child.material) {
-            if (!child.userData.isMaterialCloned) {
-                child.material = child.material.clone();
-                child.userData.isMaterialCloned = true;
-            }
-
-            if (!child.userData.originalMat) {
-                child.userData.originalMat = child.material.clone();
-            }
-            
-            if (mode === 'setup') {
-                child.material.wireframe = showWireframe || isAllowed;
-                let highlightColor = 0x000000;
-                if (settings?.stickers && settings?.material) highlightColor = 0x008888;
-                else if (settings?.material) highlightColor = 0x004488;
-                else if (settings?.stickers) highlightColor = 0x004400;
-                if (settings?.variantGroup) highlightColor = 0x550055;
-
-                child.material.emissive = new THREE.Color(isAllowed || settings?.variantGroup ? highlightColor : 0x000000);
-                child.material.color = new THREE.Color(isAllowed ? 0x88ff88 : 0xffffff);
-                child.material.map = child.userData.originalMat.map; 
-            } 
-            else {
-                child.material.wireframe = showWireframe;
-                child.material.emissive = new THREE.Color(0x000000);
-                
-                if (settings?.material && isVisible) {
-                    const loadedTex = matTextures[child.name];
-                    if (loadedTex) {
-                        child.material.map = loadedTex;
-                        child.material.color.set(0xffffff);
-                    } else if (settings.color) {
-                        child.material.map = null; 
-                        child.material.color.set(settings.color);
-                    } else {
-                        child.material.color.copy(child.userData.originalMat.color);
-                        child.material.map = child.userData.originalMat.map;
-                    }
-                } else {
-                     child.material.color.copy(child.userData.originalMat.color);
-                     child.material.map = child.userData.originalMat.map;
-                }
-                child.material.needsUpdate = true;
-            }
-        }
-      }
-    });
-    
-    setMeshRefs(refs);
-    if (onLoadHierarchy) onLoadHierarchy([...new Set(allMeshNames)].sort());
-
-  }, [gltf, allowedMeshNames, onLoadHierarchy, showWireframe, setMeshRefs, mode, zoneSettings, matTextures, activeVariants]);
-
-  // Decal Logic
-  useEffect(() => {
-      const newDecals = { ...decals };
-      let changed = false;
-
-      Object.keys(newDecals).forEach(meshName => {
-          const decal = newDecals[meshName];
-          const mesh = meshRefs[meshName];
-          
-          if (decal.url && !decal.pos && mesh) {
-             mesh.geometry.computeBoundingBox();
-             const center = new THREE.Vector3();
-             mesh.geometry.boundingBox.getCenter(center);
-             
-             newDecals[meshName] = {
-                 ...decal,
-                 pos: [center.x, center.y, center.z],
-                 normal: [0, 0, 1] 
-             };
-             changed = true;
-          }
-      });
-
-      if (changed) setDecals(newDecals);
-  }, [decals, meshRefs, setDecals]);
-
-  const handlePointerDown = (e) => {
-    const meshName = e.object.name;
-    e.stopPropagation();
-
-    if (mode === 'setup') {
-        toggleAllowedMesh(meshName);
-        return;
+    if (texture) {
+      material.map = texture;
+      material.needsUpdate = true;
     }
+  }, [texture, material]);
 
-    if (allowedMeshNames.includes(meshName) && e.object.visible) {
-        setSelectedMeshName(meshName);
-        const settings = zoneSettings[meshName] || { stickers: true, material: false };
-
-        if (settings?.stickers) {
-            setIsDragging(true);
-            setControlsEnabled(false);
-            updateDecalPosition(e, meshName);
-        }
-    } else {
-        setSelectedMeshName(null);
-    }
-  };
-
-  const handlePointerMove = (e) => {
-    if (e.object.name !== hoveredMesh) setHoveredMesh(e.object.name);
-
-    if (isDragging && selectedMeshName && e.object.name === selectedMeshName) {
+  return (
+    <mesh
+      geometry={node.geometry}
+      material={material}
+      onClick={(e) => {
         e.stopPropagation();
-        updateDecalPosition(e, selectedMeshName);
-    }
-  };
+        onClick(node.name);
+      }}
+      // Highlight logic (Visual selection)
+      onPointerOver={() => { document.body.style.cursor = 'pointer' }}
+      onPointerOut={() => { document.body.style.cursor = 'default' }}
+    >
+      {activeId === node.name && (
+        <meshStandardMaterial
+          transparent
+          opacity={0.1}
+          color="#00aaff"
+          depthTest={false}
+          depthWrite={false}
+        />
+      )}
+    </mesh>
+  );
+};
+
+const Model = ({ url, meshConfigs, activeMesh, onMeshClick, onLoaded }) => {
+  const { scene } = useGLTF(url);
   
-  const handlePointerOut = () => {
-      setHoveredMesh(null);
-  };
+  // Extract meshes once
+  useEffect(() => {
+    const meshes = [];
+    scene.traverse((o) => {
+      if (o.isMesh) meshes.push(o.name);
+    });
+    onLoaded(meshes);
+  }, [scene, onLoaded]);
 
-  const updateDecalPosition = (e, meshName) => {
-      const localPoint = e.object.worldToLocal(e.point.clone());
-      let normal = [0, 0, 1];
-      if (e.face && e.face.normal) {
-          normal = [e.face.normal.x, e.face.normal.y, e.face.normal.z];
-      }
+  return (
+    <group dispose={null}>
+      {scene.children.map((child) => {
+        if (!child.isMesh) return <primitive key={child.uuid} object={child} />;
+        return (
+          <SmartMesh 
+            key={child.name} 
+            node={child} 
+            config={meshConfigs[child.name] || {}} 
+            activeId={activeMesh}
+            onClick={onMeshClick}
+          />
+        );
+      })}
+    </group>
+  );
+};
 
-      setDecals(prev => {
-          // Default Z set to 0.6 for better coverage out of box
-          const existingData = prev[meshName] || { scale: [0.4, 0.4, 0.6], rotation: 0 };
-          return {
-            ...prev,
-            [meshName]: {
-                ...existingData, 
-                pos: [localPoint.x, localPoint.y, localPoint.z],
-                normal: normal
-            }
-          };
-      });
-  };
+// --- 2D STICKER COMPONENT ---
+const Sticker = ({ data, isSelected, onSelect, onChange }) => {
+  const [image] = useImage(data.src);
+  const shapeRef = useRef();
+  const trRef = useRef();
+
+  useEffect(() => {
+    if (isSelected && trRef.current && shapeRef.current) {
+      trRef.current.nodes([shapeRef.current]);
+      trRef.current.getLayer().batchDraw();
+    }
+  }, [isSelected]);
 
   return (
     <>
-      <gridHelper args={[10, 10, 0x444444, 0x222222]} />
-      <axesHelper args={[2]} />
-
-      <primitive 
-        object={gltf.scene} 
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerOut={handlePointerOut}
+      <KonvaImage
+        ref={shapeRef}
+        image={image}
+        x={data.x}
+        y={data.y}
+        width={data.width}
+        height={data.height}
+        draggable
+        onClick={onSelect}
+        onTap={onSelect}
+        onDragEnd={(e) => {
+          onChange({ ...data, x: e.target.x(), y: e.target.y() });
+        }}
+        onTransformEnd={() => {
+          const node = shapeRef.current;
+          const scaleX = node.scaleX();
+          node.scaleX(1); // Reset scale
+          node.scaleY(1);
+          onChange({
+            ...data,
+            x: node.x(),
+            y: node.y(),
+            width: Math.max(5, node.width() * scaleX),
+            height: Math.max(5, node.height() * node.scaleY()),
+          });
+        }}
       />
-
-      {Object.keys(decals).map(meshName => {
-          const settings = zoneSettings[meshName] || { stickers: true };
-          const mesh = meshRefs[meshName];
-          if (!settings.stickers || !mesh || !mesh.visible) return null;
-
-          const data = decals[meshName];
-          if (!data.url) return null;
-
-          return (
-            <React.Fragment key={meshName}>
-                {createPortal(
-                    <SmartDecal 
-                        key={meshName}
-                        mesh={mesh}
-                        data={data}
-                        isSelected={selectedMeshName === meshName}
-                    />,
-                    mesh
-                )}
-            </React.Fragment>
-          );
-      })}
-      
-      {mode === 'setup' && hoveredMesh && (
-          <Html position={[0,0,0]} style={{pointerEvents:'none'}}>
-              <div className="bg-black/80 text-white text-xs px-2 py-1 rounded translate-x-4 translate-y-4 whitespace-nowrap border border-white/20">
-                  {hoveredMesh} {allowedMeshNames.includes(hoveredMesh) ? "✅" : ""}
-              </div>
-          </Html>
-      )}
+      {isSelected && <Transformer ref={trRef} borderStroke="#00aaff" anchorFill="#00aaff" />}
     </>
   );
 };
 
-/* =========================================
-   4. MAIN COMPONENT (TESTER DASHBOARD)
-   ========================================= */
-export default function Simple3DViewer() {
-  const [modelUrl, setModelUrl] = useState(null);
-  const [controlsEnabled, setControlsEnabled] = useState(true);
-  const [mode, setMode] = useState('setup'); 
+// --- MAIN APP ---
+export default function App() {
+  const [glbUrl, setGlbUrl] = useState(null);
+  const [meshes, setMeshes] = useState([]);
+  const [activeMesh, setActiveMesh] = useState(null);
+  const [meshConfigs, setMeshConfigs] = useState({}); // { Front: { canvasRef, version, mask, stickers: [] } }
+  const [selectedStickerId, setSelectedStickerId] = useState(null);
 
-  const [allowedInput, setAllowedInput] = useState("Photo, Screen");
-  const [hierarchy, setHierarchy] = useState([]); 
-  const [showWireframe, setShowWireframe] = useState(false);
-
-  const [modelPos, setModelPos] = useState([0, 0, 0]);
-  const [modelRot, setModelRot] = useState([0, 0, 0]);
-
-  const [decals, setDecals] = useState({});
-  const [zoneSettings, setZoneSettings] = useState({}); 
-  const [activeVariants, setActiveVariants] = useState({});
-  
-  const [selectedMeshName, setSelectedMeshName] = useState(null);
-  const [meshRefs, setMeshRefs] = useState({});
-
-  const allowedMeshNames = useMemo(() => {
-    return allowedInput.split(',').map(s => s.trim()).filter(s => s.length > 0);
-  }, [allowedInput]);
-
-  const variantGroups = useMemo(() => {
-      const groups = {};
-      Object.entries(zoneSettings).forEach(([meshName, settings]) => {
-          if (settings.variantGroup) {
-              if (!groups[settings.variantGroup]) groups[settings.variantGroup] = [];
-              groups[settings.variantGroup].push(meshName);
-          }
-      });
-      return groups;
-  }, [zoneSettings]);
-
-  useEffect(() => {
-      const defaults = {};
-      Object.keys(variantGroups).forEach(group => {
-          if (!activeVariants[group] || !variantGroups[group].includes(activeVariants[group])) {
-              if (variantGroups[group].length > 0) {
-                  defaults[group] = variantGroups[group][0]; 
-              }
-          }
-      });
-      if (Object.keys(defaults).length > 0) {
-          setActiveVariants(prev => ({ ...prev, ...defaults }));
-      }
-  }, [variantGroups, activeVariants]);
-
-
-  const toggleAllowedMesh = (name) => {
-    let current = allowedMeshNames;
-    if (current.includes(name)) {
-        current = current.filter(n => n !== name);
-        const newSettings = { ...zoneSettings };
-        delete newSettings[name];
-        setZoneSettings(newSettings);
-    } else {
-        current.push(name);
-        setZoneSettings(prev => ({ 
-            ...prev, 
-            [name]: { stickers: true, material: false, color: '#ffffff', variantGroup: '' } 
-        }));
-    }
-    setAllowedInput(current.join(', '));
+  // 1. Upload GLB
+  const handleGlbUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) setGlbUrl(URL.createObjectURL(file));
   };
 
-  const toggleCapability = (name, cap) => {
-      setZoneSettings(prev => {
-          const current = prev[name] || { stickers: true, material: false, color: '#ffffff' };
-          return {
-            ...prev,
-            [name]: { ...current, [cap]: !current[cap] }
-          };
-      });
-  };
-
-  const updateVariantGroup = (name, groupName) => {
-      setZoneSettings(prev => {
-          const current = prev[name] || { stickers: true, material: false, color: '#ffffff' };
-          return {
-            ...prev,
-            [name]: { ...current, variantGroup: groupName }
-          };
-      });
-  };
-
-  const setZoneColor = (name, color) => {
-      setZoneSettings(prev => ({
-          ...prev,
-          [name]: { ...prev[name], color: color, texture: null }
-      }));
-  };
-
-  const handleFileUpload = (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
+  // 2. Upload SVG Mask
+  const handleSvgUpload = (e) => {
+    if (!activeMesh) return alert("Please select a mesh part first.");
+    const file = e.target.files[0];
+    if (file) {
       const url = URL.createObjectURL(file);
+      updateConfig(activeMesh, { mask: url });
+    }
+  };
 
-      if (selectedMeshName && allowedMeshNames.includes(selectedMeshName)) {
-          updateDecal(selectedMeshName, { url });
+  // 3. Upload Sticker
+  const handleStickerUpload = (e) => {
+    if (!activeMesh) return alert("Please select a mesh part first.");
+    const file = e.target.files[0];
+    if (file) {
+      const url = URL.createObjectURL(file);
+      const newSticker = { id: uuidv4(), src: url, x: 150, y: 150, width: 200, height: 200 };
+      
+      const currentStickers = meshConfigs[activeMesh]?.stickers || [];
+      updateConfig(activeMesh, { stickers: [...currentStickers, newSticker] });
+    }
+  };
+
+  // Helper to update state and bump version (triggers 3D texture update)
+  const updateConfig = (meshName, newValues) => {
+    setMeshConfigs(prev => ({
+      ...prev,
+      [meshName]: {
+        ...prev[meshName],
+        ...newValues,
+        version: (prev[meshName]?.version || 0) + 1 // Bumps version to refresh texture
       }
+    }));
   };
 
-  const updateDecal = (meshName, newData) => {
-      setDecals(prev => {
-          // Initialize scale as Array [x, y, z] if it was a number or undefined
-          const oldScale = prev[meshName]?.scale;
-          const safeScale = Array.isArray(oldScale) ? oldScale : [0.4, 0.4, 0.2];
-          
-          return {
-            ...prev,
-            [meshName]: {
-                ...(prev[meshName] || { scale: safeScale, rotation: 0, pos: null, normal: null }),
-                ...newData
-            }
-          };
-      });
+  // Styles
+  const styles = {
+    container: { display: "flex", height: "100vh", backgroundColor: "#1e1e1e", color: "white", fontFamily: "Inter, sans-serif" },
+    sidebar: { width: "320px", borderRight: "1px solid #333", display: "flex", flexDirection: "column" },
+    header: { padding: "20px", borderBottom: "1px solid #333", fontSize: "18px", fontWeight: "bold", display: "flex", alignItems: "center", gap: "10px" },
+    content: { flex: 1, padding: "20px", overflowY: "auto" },
+    card: { backgroundColor: "#2a2a2a", borderRadius: "8px", padding: "16px", marginBottom: "16px" },
+    label: { display: "block", fontSize: "12px", color: "#888", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "1px" },
+    button: { width: "100%", padding: "10px", backgroundColor: "#00aaff", border: "none", borderRadius: "6px", color: "white", cursor: "pointer", fontWeight: "600", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" },
+    meshItem: (isActive) => ({
+      padding: "10px", borderRadius: "6px", marginBottom: "4px", cursor: "pointer",
+      backgroundColor: isActive ? "#00aaff20" : "transparent",
+      color: isActive ? "#00aaff" : "#ccc",
+      border: isActive ? "1px solid #00aaff" : "1px solid transparent",
+      display: "flex", alignItems: "center", gap: "10px"
+    }),
+    uploadBox: { border: "2px dashed #444", borderRadius: "8px", padding: "20px", textAlign: "center", cursor: "pointer", color: "#666" },
+    hiddenInput: { display: "none" }
   };
-
-  // Update scale X (width) or Y (height) or Z (depth) independently
-  const updateSelectedScale = (axis, value) => {
-      if (!selectedMeshName) return;
-      const current = decals[selectedMeshName] || {};
-      const oldScale = Array.isArray(current.scale) ? current.scale : [0.4, 0.4, 0.2];
-      
-      const newScale = [...oldScale];
-      if (axis === 'x') newScale[0] = value;
-      if (axis === 'y') newScale[1] = value;
-      if (axis === 'z') newScale[2] = value;
-      
-      updateDecal(selectedMeshName, { scale: newScale });
-  };
-
-  const updateSelectedTransform = (key, value) => {
-      if (!selectedMeshName) return;
-      updateDecal(selectedMeshName, { [key]: value });
-  };
-
-  const handleSaveConfiguration = () => {
-    if (!modelUrl) return;
-
-    const stickerZones = [];
-    const materialZones = [];
-    const variantDefinitions = [];
-
-    allowedMeshNames.forEach(meshName => {
-        const settings = zoneSettings[meshName] || { stickers: true, material: false };
-        const zoneId = meshName.toLowerCase().replace(/\s+/g, '_');
-        const label = `Custom ${meshName}`;
-
-        if (settings.stickers) {
-            const currentTestDecal = decals[meshName];
-            let defaultPosition = [0, 0, 0];
-            let defaultNormal = [0, 0, 1];
-            let defaultScale = [0.4, 0.4, 0.2]; 
-
-            if (currentTestDecal && currentTestDecal.pos) {
-                defaultPosition = currentTestDecal.pos;
-                defaultNormal = currentTestDecal.normal || [0, 0, 1];
-                defaultScale = Array.isArray(currentTestDecal.scale) ? currentTestDecal.scale : [0.4, 0.4, 0.2];
-            } else {
-                 const mesh = meshRefs[meshName];
-                 if(mesh) {
-                    mesh.geometry.computeBoundingBox();
-                    const center = new THREE.Vector3();
-                    mesh.geometry.boundingBox.getCenter(center);
-                    defaultPosition = [center.x, center.y, center.z];
-                 }
-            }
-
-            stickerZones.push({
-                zoneId,
-                meshName,
-                label: `${label} (Sticker)`,
-                type: 'decal',
-                variantGroup: settings.variantGroup || null, 
-                defaultTransform: {
-                    position: defaultPosition,
-                    normal: defaultNormal,
-                    scale: defaultScale
-                }
-            });
-        } 
-
-        if (settings.material) {
-            materialZones.push({
-                zoneId: `${zoneId}_mat`,
-                meshName,
-                label: `${label} (Material)`,
-                type: 'material',
-                variantGroup: settings.variantGroup || null,
-                defaultMaterial: {
-                    color: settings.color || '#ffffff'
-                }
-            });
-        }
-    });
-
-    Object.keys(variantGroups).forEach(group => {
-        variantDefinitions.push({
-            id: group.toLowerCase().replace(/\s+/g, '_'),
-            label: group,
-            options: variantGroups[group], 
-            default: activeVariants[group] || variantGroups[group][0]
-        });
-    });
-
-    const productDefinition = {
-        modelSource: "YOUR_GLB_URL_HERE.glb",
-        globalTransform: {
-            position: modelPos,
-            rotation: modelRot.map(d => d * Math.PI / 180)
-        },
-        variantGroups: variantDefinitions,
-        stickerZones,
-        materialZones
-    };
-
-    console.log("------------------------------------------");
-    console.log("✅ PRODUCT DEFINITION SAVED");
-    console.log(JSON.stringify(productDefinition, null, 2));
-    console.log("------------------------------------------");
-    alert("Product Definition generated! Check Console (F12).");
-  };
-
-  const activeSettings = selectedMeshName 
-    ? (zoneSettings[selectedMeshName] || { stickers: true, material: false, color: '#ffffff', variantGroup: '' }) 
-    : null;
-
-  // Safe accessor for scale array
-  const getCurrentScale = () => {
-      const d = decals[selectedMeshName];
-      if (!d) return [0.4, 0.4, 0.2];
-      return Array.isArray(d.scale) ? d.scale : [d.scale ?? 0.4, d.scale ?? 0.4, 0.2];
-  };
-  const [scaleX, scaleY, scaleZ] = getCurrentScale();
-  
-  const currentRotation = decals[selectedMeshName]?.rotation ?? 0;
-  const currentRotationDeg = Math.round(currentRotation * (180 / Math.PI));
-
-  if (!modelUrl) {
-    return (
-      <div className="flex flex-col items-center justify-center w-full h-screen bg-neutral-900 text-white">
-        <div className="p-8 rounded-2xl border-2 border-dashed border-neutral-700 bg-white/5 text-center">
-          <h2 className="text-2xl font-bold mb-4">3D Model Inspector</h2>
-          <label className="cursor-pointer bg-blue-600 hover:bg-blue-500 px-6 py-3 rounded-xl font-bold transition-colors inline-block">
-            <span>Upload GLB for Testing</span>
-            <input 
-              type="file" 
-              accept=".glb,.gltf" 
-              className="hidden" 
-              onChange={(e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    setModelUrl(URL.createObjectURL(file));
-                    setDecals({});
-                    setSelectedMeshName(null);
-                    setHierarchy([]);
-                    setModelPos([0,0,0]);
-                    setModelRot([0,0,0]);
-                    setZoneSettings({});
-                    setActiveVariants({});
-                }
-              }}
-            />
-          </label>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="w-full h-screen bg-[#111] relative flex">
+    <div style={styles.container}>
       
-      {/* --- LEFT SIDEBAR: HIERARCHY --- */}
-      <div className="w-64 h-full bg-[#1a1a1a] border-r border-white/10 flex flex-col z-10">
-          <div className="p-4 border-b border-white/10">
-              <button onClick={() => setModelUrl(null)} className="w-full bg-white/10 text-white px-3 py-2 rounded mb-4 hover:bg-white/20 text-xs font-bold">← Upload New Model</button>
-              
-              <div className="flex bg-black/50 p-1 rounded-lg mb-4">
-                  <button onClick={() => setMode('setup')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-colors ${mode === 'setup' ? 'bg-blue-600 text-white' : 'text-neutral-500 hover:text-white'}`}>🛠️ Setup</button>
-                  <button onClick={() => setMode('test')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-colors ${mode === 'test' ? 'bg-purple-600 text-white' : 'text-neutral-500 hover:text-white'}`}>🎨 Test</button>
+      {/* --- LEFT SIDEBAR (Ultra Rich UI) --- */}
+      <div style={styles.sidebar}>
+        <div style={styles.header}>
+          <Box size={20} color="#00aaff" />
+          <span>Configurator Pro</span>
+        </div>
+
+        <div style={styles.content}>
+          {/* STEP 1: GLB Loader */}
+          {!glbUrl && (
+            <div style={styles.card}>
+              <span style={styles.label}>1. Project File</span>
+              <label style={styles.uploadBox}>
+                <Upload size={24} style={{ marginBottom: 10 }} />
+                <br />
+                Click to upload .GLB
+                <input type="file" style={styles.hiddenInput} accept=".glb" onChange={handleGlbUpload} />
+              </label>
+            </div>
+          )}
+
+          {/* STEP 2: Mesh Selector */}
+          {glbUrl && (
+            <div style={styles.card}>
+              <span style={styles.label}>2. Select Zone</span>
+              <div style={{ maxHeight: "200px", overflowY: "auto" }}>
+                {meshes.map(mesh => (
+                  <div 
+                    key={mesh} 
+                    style={styles.meshItem(activeMesh === mesh)}
+                    onClick={() => setActiveMesh(mesh)}
+                  >
+                    <Layers size={16} />
+                    {mesh}
+                  </div>
+                ))}
               </div>
+            </div>
+          )}
 
-              <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">
-                  {mode === 'setup' ? "Structure & Variants" : "Active Variants"}
-              </h3>
+          {/* STEP 3: Actions */}
+          {activeMesh && (
+            <div style={styles.card}>
+              <span style={styles.label}>3. Edit {activeMesh}</span>
               
-              {mode === 'setup' && (
-                <label className="flex items-center gap-2 text-xs text-neutral-300 cursor-pointer hover:text-white mb-2">
-                    <input type="checkbox" checked={showWireframe} onChange={e => setShowWireframe(e.target.checked)} className="rounded border-white/20 bg-white/5"/>
-                    Show Wireframe
+              <div style={{ display: "grid", gap: "10px" }}>
+                {/* Upload Mask */}
+                <label style={{...styles.button, backgroundColor: "#333"}}>
+                  <ImageIcon size={16} />
+                  {meshConfigs[activeMesh]?.mask ? "Replace Mask" : "Upload Mask (SVG)"}
+                  <input type="file" style={styles.hiddenInput} accept=".svg,.png" onChange={handleSvgUpload} />
                 </label>
-              )}
-          </div>
 
-          <div className="flex-1 overflow-y-auto p-2">
-              {/* TEST MODE: VARIANT SELECTOR */}
-              {mode === 'test' && (
-                  <>
-                    {Object.keys(variantGroups).length === 0 ? (
-                        <div className="p-4 text-center">
-                            <p className="text-xs text-neutral-500 mb-2">No variants configured.</p>
-                            <button onClick={() => setMode('setup')} className="text-[10px] text-blue-400 underline">Go to Setup to add Variant Groups</button>
-                        </div>
-                    ) : (
-                        <div className="mb-6">
-                            {Object.keys(variantGroups).map(group => (
-                                <div key={group} className="mb-4">
-                                    <h4 className="text-[10px] uppercase font-bold text-purple-400 mb-2 pl-2">{group}</h4>
-                                    <div className="flex flex-col gap-1">
-                                        {variantGroups[group].map(meshName => (
-                                            <button
-                                                key={meshName}
-                                                onClick={() => setActiveVariants(prev => ({ ...prev, [group]: meshName }))}
-                                                className={`text-xs px-3 py-2 text-left rounded transition-colors ${activeVariants[group] === meshName ? 'bg-purple-600 text-white font-bold' : 'text-neutral-400 hover:bg-white/5'}`}
-                                            >
-                                                {meshName}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                  </>
-              )}
-
-              {/* SETUP MODE: MESH LIST */}
-              {mode === 'setup' && hierarchy.map(name => {
-                  const isAllowed = allowedMeshNames.includes(name);
-                  // ✅ FIX: Fallback
-                  const settings = zoneSettings[name] || { stickers: true, material: false, variantGroup: '' };
-                  
-                  return (
-                      <div key={name} className="mb-1 border-b border-white/5 pb-2">
-                          <button
-                            onClick={() => toggleAllowedMesh(name)}
-                            className={`w-full text-left px-3 py-2 text-xs font-mono rounded transition-colors flex items-center justify-between
-                                ${isAllowed ? 'bg-white/10 text-white' : 'text-neutral-500 hover:bg-white/5'}
-                            `}
-                          >
-                              <span className="truncate" title={name}>{name}</span>
-                              {isAllowed && <span className="text-[9px] bg-green-600 text-white px-1 rounded">ON</span>}
-                          </button>
-                          
-                          {/* Setup Controls */}
-                          {isAllowed && (
-                              <div className="pl-2 mt-1 flex flex-col gap-2">
-                                  <div className="flex gap-1">
-                                      <button onClick={() => toggleCapability(name, 'stickers')} className={`text-[9px] px-2 py-1 rounded flex-1 border ${settings.stickers ? 'bg-blue-600 border-blue-400 text-white' : 'bg-transparent border-white/10 text-neutral-500'}`}>Sticker</button>
-                                      <button onClick={() => toggleCapability(name, 'material')} className={`text-[9px] px-2 py-1 rounded flex-1 border ${settings.material ? 'bg-orange-600 border-orange-400 text-white' : 'bg-transparent border-white/10 text-neutral-500'}`}>Material</button>
-                                  </div>
-                                  <div>
-                                      <input 
-                                        type="text" 
-                                        placeholder="Variant Group (e.g. Sleeves)"
-                                        value={settings.variantGroup || ''}
-                                        onChange={(e) => updateVariantGroup(name, e.target.value)}
-                                        className="w-full bg-black/40 text-white text-[10px] px-2 py-1 rounded border border-white/10 focus:border-purple-500 outline-none"
-                                      />
-                                  </div>
-                              </div>
-                          )}
-                      </div>
-                  )
-              })}
-          </div>
+                {/* Add Sticker */}
+                <label style={styles.button}>
+                  <MousePointer2 size={16} />
+                  Add Sticker
+                  <input type="file" style={styles.hiddenInput} accept=".png,.jpg" onChange={handleStickerUpload} />
+                </label>
+              </div>
+            </div>
+          )}
+        </div>
+        
+        {/* Footer */}
+        <div style={{ padding: "20px", borderTop: "1px solid #333" }}>
+          <button style={{ ...styles.button, backgroundColor: "#4CAF50" }}>
+            <Save size={16} /> Save Configuration
+          </button>
+        </div>
       </div>
 
-      {/* --- CENTER: CANVAS --- */}
-      <div className="flex-1 relative h-full">
-        <div className="absolute top-5 left-5 z-0 pointer-events-none">
-            <h1 className="text-white font-bold text-xl drop-shadow-md">
-                {mode === 'setup' ? "🛠️ Setup Mode" : "🎨 Test Mode"}
-            </h1>
-            <p className="text-neutral-400 text-sm drop-shadow-md max-w-md">
-                {mode === 'setup' 
-                    ? "Click meshes to toggle. Enable Sticker/Material capabilities." 
-                    : "Interact with zones to test visuals."}
-            </p>
-        </div>
-
-        <Canvas 
-            shadows 
-            camera={{ position: [3, 3, 3], fov: 45 }}
-            onPointerMissed={() => setSelectedMeshName(null)}
-        >
-            <ambientLight intensity={0.8} />
-            <Environment preset="city" />
-
-            <Suspense fallback={<Html center><div className="text-white font-bold">LOADING...</div></Html>}>
-            <Center position={modelPos} rotation={modelRot.map(d => d * Math.PI / 180)}>
-                <ModelViewer 
-                    url={modelUrl} 
-                    setControlsEnabled={setControlsEnabled}
-                    allowedMeshNames={allowedMeshNames}
-                    decals={decals}
-                    setDecals={setDecals}
-                    zoneSettings={zoneSettings}
-                    setZoneSettings={setZoneSettings}
-                    activeVariants={activeVariants}
-                    selectedMeshName={selectedMeshName}
-                    setSelectedMeshName={setSelectedMeshName}
-                    onLoadHierarchy={setHierarchy}
-                    showWireframe={showWireframe}
-                    meshRefs={meshRefs}
-                    setMeshRefs={setMeshRefs}
-                    mode={mode}
-                    toggleAllowedMesh={toggleAllowedMesh}
-                />
-            </Center>
-            </Suspense>
-
-            <OrbitControls makeDefault enabled={controlsEnabled} minDistance={0.1} maxDistance={500} />
+      {/* --- CENTER: 3D CANVAS --- */}
+      <div style={{ flex: 1, position: "relative", backgroundColor: "#111" }}>
+        <Canvas shadows camera={{ position: [0, 0, 1.5], fov: 45 }}>
+          <ambientLight intensity={0.7} />
+          <Environment preset="city" />
+          <AccumulativeShadows opacity={0.4} scale={10}>
+            <RandomizedLight amount={8} radius={4} ambient={0.5} position={[5, 5, -10]} bias={0.001} />
+          </AccumulativeShadows>
+          
+          <Center>
+            {glbUrl && (
+              <Model 
+                url={glbUrl} 
+                meshConfigs={meshConfigs} 
+                activeMesh={activeMesh}
+                onMeshClick={setActiveMesh}
+                onLoaded={setMeshes}
+              />
+            )}
+          </Center>
+          <OrbitControls makeDefault />
         </Canvas>
+      </div>
 
-        {/* --- RIGHT OVERLAY: EDITOR --- */}
-        <div className="absolute top-5 right-5 flex flex-col gap-3 w-64 pointer-events-none">
-            <div className="pointer-events-auto flex flex-col gap-3">
-                
-                {/* 1. MODEL ALIGNMENT (Visible when NO zone is selected) */}
-                {!selectedMeshName && (
-                    <div className="bg-black/80 text-white px-4 py-3 rounded-lg backdrop-blur border border-white/10">
-                        <div className="flex justify-between items-center mb-2">
-                             <h4 className="text-[10px] text-yellow-400 font-bold uppercase">Model Alignment</h4>
-                             <button onClick={() => { setModelPos([0,0,0]); setModelRot([0,0,0]); }} className="text-[9px] text-neutral-400 hover:text-white underline">Reset</button>
-                        </div>
-                        
-                        {/* Position Y (Up/Down) */}
-                        <div className="mb-2">
-                            <div className="flex justify-between text-[10px] text-neutral-400 mb-1">
-                                <span>POS Y (Up/Down)</span>
-                                <span>{modelPos[1].toFixed(1)}</span>
-                            </div>
-                            <input type="range" min="-5" max="5" step="0.1" value={modelPos[1]} onChange={(e) => setModelPos([modelPos[0], parseFloat(e.target.value), modelPos[2]])} className="w-full h-1 bg-neutral-600 rounded-lg appearance-none cursor-pointer" />
-                        </div>
-                         {/* Position X (Left/Right) */}
-                         <div className="mb-2">
-                            <div className="flex justify-between text-[10px] text-neutral-400 mb-1">
-                                <span>POS X (Left/Right)</span>
-                                <span>{modelPos[0].toFixed(1)}</span>
-                            </div>
-                            <input type="range" min="-5" max="5" step="0.1" value={modelPos[0]} onChange={(e) => setModelPos([parseFloat(e.target.value), modelPos[1], modelPos[2]])} className="w-full h-1 bg-neutral-600 rounded-lg appearance-none cursor-pointer" />
-                        </div>
+      {/* --- HIDDEN 2D PROCESSING CANVAS --- */}
+      {/* This renders off-screen but feeds textures to 3D */}
+      <div style={{ position: "absolute", top: "-9999px", left: "-9999px" }}>
+        {meshes.map(meshName => (
+          <Stage
+            key={meshName}
+            width={1024}
+            height={1024}
+            ref={node => {
+              if (node && !meshConfigs[meshName]?.canvasRef) {
+                // Initial ref registration
+                const canvas = node.getStage().content.children[0];
+                setMeshConfigs(prev => ({
+                  ...prev,
+                  [meshName]: { ...prev[meshName], canvasRef: { current: canvas } }
+                }));
+              }
+            }}
+          >
+            <Layer>
+              {/* The White Base (T-shirt fabric) */}
+              <KonvaImage
+                width={1024} height={1024}
+                image={(() => {
+                    const i = new Image(); 
+                    i.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; // transparent placeholder
+                    return i;
+                })()} 
+              />
+              
+              {/* The Mask (SVG) */}
+              {meshConfigs[meshName]?.mask && (
+                <ConfiguredImage 
+                  src={meshConfigs[meshName].mask} 
+                  x={0} y={0} width={1024} height={1024} 
+                  listening={false} // Mask shouldn't be dragged
+                />
+              )}
 
-                         {/* Rotation Y (Spin) */}
-                         <div>
-                            <div className="flex justify-between text-[10px] text-neutral-400 mb-1">
-                                <span>ROTATE Y</span>
-                                <span>{modelRot[1]}°</span>
-                            </div>
-                            <input type="range" min="0" max="360" step="10" value={modelRot[1]} onChange={(e) => setModelRot([modelRot[0], parseInt(e.target.value), modelRot[2]])} className="w-full h-1 bg-neutral-600 rounded-lg appearance-none cursor-pointer" />
-                        </div>
-                    </div>
-                )}
-
-                {/* 2. ZONE EDITOR (Visible when Zone IS selected) */}
-                <div className="bg-black/80 text-white px-4 py-3 rounded-lg backdrop-blur border border-white/10">
-                    <span className="text-[10px] text-neutral-400 uppercase font-bold">Currently Editing</span>
-                    <div className="text-sm font-mono font-bold mt-1 text-blue-400 truncate">
-                        {selectedMeshName || "None"}
-                    </div>
-                    {selectedMeshName && (
-                        <div className="mt-1 flex flex-col gap-1">
-                             <div className="text-[10px] text-neutral-500 flex gap-2">
-                                {activeSettings?.stickers && <span className="bg-blue-900/50 px-1 rounded text-blue-300">Sticker</span>}
-                                {activeSettings?.material && <span className="bg-orange-900/50 px-1 rounded text-orange-300">Material</span>}
-                             </div>
-                             {activeSettings?.variantGroup && (
-                                <div className="text-[10px] text-purple-400 border border-purple-500/30 px-1 rounded w-fit">
-                                    Group: {activeSettings.variantGroup}
-                                </div>
-                             )}
-                        </div>
-                    )}
-                </div>
-
-                {/* --- CONTROLS: DECAL (STICKER) --- */}
-                {mode === 'test' && selectedMeshName && activeSettings?.stickers && (
-                    <div className="border-l-2 border-blue-500 pl-2">
-                         <div className="bg-black/80 text-white px-4 py-3 rounded-lg backdrop-blur border border-white/10 mb-2">
-                            <h4 className="text-[10px] text-blue-400 font-bold mb-2 uppercase">Sticker Settings</h4>
-                            <div className="mb-2">
-                                <div className="flex justify-between text-[10px] font-bold text-neutral-400 mb-1">
-                                    <span>WIDTH (Scale X)</span>
-                                    <span>{scaleX.toFixed(2)}</span>
-                                </div>
-                                <input type="range" min="0.05" max="10.0" step="0.05" value={scaleX} onChange={(e) => updateSelectedScale('x', parseFloat(e.target.value))} className="w-full h-1 bg-neutral-600 rounded-lg appearance-none cursor-pointer" />
-                            </div>
-                            <div className="mb-3">
-                                <div className="flex justify-between text-[10px] font-bold text-neutral-400 mb-1">
-                                    <span>HEIGHT (Scale Y)</span>
-                                    <span>{scaleY.toFixed(2)}</span>
-                                </div>
-                                <input type="range" min="0.05" max="10.0" step="0.05" value={scaleY} onChange={(e) => updateSelectedScale('y', parseFloat(e.target.value))} className="w-full h-1 bg-neutral-600 rounded-lg appearance-none cursor-pointer" />
-                            </div>
-                            {/* NEW: PROJECTION DEPTH (Z) */}
-                            <div className="mb-3">
-                                <div className="flex justify-between text-[10px] font-bold text-neutral-400 mb-1">
-                                    <span>DEPTH (Projection)</span>
-                                    <span>{scaleZ.toFixed(2)}</span>
-                                </div>
-                                <input type="range" min="0.01" max="10.0" step="0.05" value={scaleZ} onChange={(e) => updateSelectedScale('z', parseFloat(e.target.value))} className="w-full h-1 bg-neutral-600 rounded-lg appearance-none cursor-pointer" />
-                                <div className="text-[9px] text-neutral-500 mt-1">
-                                    Low (~0.1) for Flat/T-Shirts. High (~0.6+) for Mugs.
-                                </div>
-                            </div>
-                            <div>
-                                <div className="flex justify-between text-[10px] font-bold text-neutral-400 mb-1">
-                                    <span>ROTATION</span>
-                                    <span>{currentRotationDeg}°</span>
-                                </div>
-                                <input type="range" min="0" max="360" step="5" value={currentRotationDeg} onChange={(e) => updateSelectedTransform('rotation', parseInt(e.target.value) * (Math.PI / 180))} className="w-full h-1 bg-neutral-600 rounded-lg appearance-none cursor-pointer" />
-                            </div>
-                        </div>
-                        <div className="bg-black/80 text-white px-4 py-3 rounded-lg backdrop-blur border border-white/10">
-                            <label className="text-[10px] text-neutral-400 uppercase font-bold block mb-2">Upload Sticker</label>
-                            <input 
-                                type="file" 
-                                accept="image/*" 
-                                onChange={(e) => {
-                                    const file = e.target.files[0];
-                                    if(file) updateDecal(selectedMeshName, { url: URL.createObjectURL(file) });
-                                }} 
-                                className="w-full text-xs text-neutral-300 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:bg-blue-600 file:text-white hover:file:bg-blue-500" 
-                            />
-                        </div>
-                    </div>
-                )}
-
-                {/* --- CONTROLS: MATERIAL (SKIN) --- */}
-                {mode === 'test' && selectedMeshName && activeSettings?.material && (
-                    <div className="border-l-2 border-orange-500 pl-2 mt-2">
-                        <div className="bg-black/80 text-white px-4 py-3 rounded-lg backdrop-blur border border-white/10">
-                            <h4 className="text-[10px] text-orange-400 font-bold mb-2 uppercase">Material / Skin Settings</h4>
-                            
-                            <label className="text-[10px] text-neutral-400 uppercase font-bold block mb-2">Base Color</label>
-                            <input 
-                                type="color" 
-                                value={activeSettings.color || '#ffffff'}
-                                onChange={(e) => setZoneColor(selectedMeshName, e.target.value)}
-                                className="w-full h-8 cursor-pointer rounded mb-3"
-                            />
-
-                            <label className="text-[10px] text-neutral-400 uppercase font-bold block mb-2">Upload Pattern / Texture</label>
-                            <input 
-                                type="file" 
-                                accept="image/*" 
-                                key={`mat-${selectedMeshName}`} 
-                                onChange={(e) => {
-                                    const file = e.target.files[0];
-                                    if(file) {
-                                        setZoneSettings(prev => ({
-                                            ...prev,
-                                            [selectedMeshName]: { ...prev[selectedMeshName], texture: URL.createObjectURL(file) }
-                                        }));
-                                    }
-                                }}
-                                className="w-full text-xs text-neutral-300 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:bg-orange-600 file:text-white hover:file:bg-orange-500" 
-                            />
-                            <p className="text-[9px] text-neutral-500 mt-2 italic">
-                                Note: Patterns wrap around the whole mesh. For front-only designs, use the Sticker section above.
-                            </p>
-                        </div>
-                    </div>
-                )}
-
-                <button onClick={handleSaveConfiguration} className="w-full bg-green-600 text-white px-4 py-3 rounded-lg backdrop-blur hover:bg-green-500 transition-colors font-bold text-xs uppercase tracking-wider shadow-lg border border-green-400/30">
-                    💾 Save Product Config
-                </button>
-            </div>
-        </div>
+              {/* The Stickers */}
+              {meshConfigs[meshName]?.stickers?.map(sticker => (
+                <Sticker
+                  key={sticker.id}
+                  data={sticker}
+                  isSelected={sticker.id === selectedStickerId}
+                  onSelect={() => {
+                    setActiveMesh(meshName);
+                    setSelectedStickerId(sticker.id);
+                  }}
+                  onChange={(newAttrs) => {
+                    const stickers = meshConfigs[meshName].stickers.map(s => s.id === newAttrs.id ? newAttrs : s);
+                    updateConfig(meshName, { stickers });
+                  }}
+                />
+              ))}
+            </Layer>
+          </Stage>
+        ))}
       </div>
     </div>
   );
 }
+
+// Wrapper for simple images to handle loading hook
+const ConfiguredImage = ({ src, ...props }) => {
+  const [img] = useImage(src);
+  return <KonvaImage image={img} {...props} />;
+};
