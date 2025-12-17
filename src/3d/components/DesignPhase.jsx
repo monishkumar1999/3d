@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { Canvas } from "@react-three/fiber";
-import { Environment, OrbitControls, Center } from "@react-three/drei";
-import { Type, Palette, Upload, Download, Image as ImageIcon, ChevronLeft, X } from "lucide-react";
+import { Environment, OrbitControls, Center, ContactShadows } from "@react-three/drei";
+import { Type, Palette, Upload, Download, Image as ImageIcon, ChevronLeft, X, Save } from "lucide-react";
+import { useStore } from "../../store/useStore";
 
 import DynamicModel from "./DynamicModel";
 import PatternZone from "./PatternZone";
@@ -40,6 +41,12 @@ const DesignPhase = ({ glbUrl, meshConfig, meshTextures, globalMaterial, activeS
     const [sidebarOpen, setSidebarOpen] = useState(false); // Closed by default for "removed" feel
     const [selectedMesh, setSelectedMesh] = useState(null); // Highlighting Logic
     const [meshColors, setMeshColors] = useState({}); // Per-mesh coloring
+
+    // Store
+    const { materialSettings, setMaterialSetting, saveMaterialConfiguration } = useStore();
+
+    // Bust cache once on mount to handle the empty file replacement
+    const [hdrUrl] = useState(`/hdr/studio_soft.hdr?v=${Date.now()}`);
 
 
     return (
@@ -107,22 +114,82 @@ const DesignPhase = ({ glbUrl, meshConfig, meshTextures, globalMaterial, activeS
                     )}
 
                     <div className="space-y-4">
-                        <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest block">Material Properties</label>
+                        <div className="flex justify-between items-center">
+                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest block">Studio Settings (Admin)</label>
+                            <button onClick={saveMaterialConfiguration} className="text-indigo-600 hover:text-indigo-800 transition-colors" title="Save Preset">
+                                <Save size={14} />
+                            </button>
+                        </div>
                         <div className="bg-white border border-zinc-200 rounded-xl p-4 shadow-sm space-y-5">
-                            <div className="space-y-2">
+
+                            {/* Roughness */}
+                            <div className="space-y-1">
                                 <div className="flex justify-between text-xs text-zinc-400">
                                     <span>Roughness</span>
-                                    <span>{globalMaterial.roughness}</span>
+                                    <span>{materialSettings.roughness}</span>
                                 </div>
-                                <input type="range" min="0" max="1" step="0.1" value={globalMaterial.roughness} onChange={e => setGlobalMaterial(p => ({ ...p, roughness: parseFloat(e.target.value) }))} className="w-full h-1 bg-zinc-200 rounded-lg appearance-none accent-indigo-600" />
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.01"
+                                    value={materialSettings.roughness}
+                                    onChange={(e) => setMaterialSetting("roughness", Number(e.target.value))}
+                                    className="w-full h-1 bg-zinc-200 rounded-lg appearance-none accent-indigo-600"
+                                />
                             </div>
-                            <div className="space-y-2">
+
+                            {/* Sheen */}
+                            <div className="space-y-1">
+                                <div className="flex justify-between text-xs text-zinc-400">
+                                    <span>Sheen (Velvet)</span>
+                                    <span>{materialSettings.sheen}</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.01"
+                                    value={materialSettings.sheen}
+                                    onChange={(e) => setMaterialSetting("sheen", Number(e.target.value))}
+                                    className="w-full h-1 bg-zinc-200 rounded-lg appearance-none accent-indigo-600"
+                                />
+                            </div>
+
+                            {/* Sheen Roughness */}
+                            <div className="space-y-1">
+                                <div className="flex justify-between text-xs text-zinc-400">
+                                    <span>Sheen Spread</span>
+                                    <span>{materialSettings.sheenRoughness}</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.01"
+                                    value={materialSettings.sheenRoughness}
+                                    onChange={(e) => setMaterialSetting("sheenRoughness", Number(e.target.value))}
+                                    className="w-full h-1 bg-zinc-200 rounded-lg appearance-none accent-indigo-600"
+                                />
+                            </div>
+
+                            {/* Metalness (Optional Admin Override) */}
+                            <div className="space-y-1 pt-4 border-t border-zinc-100">
                                 <div className="flex justify-between text-xs text-zinc-400">
                                     <span>Metalness</span>
-                                    <span>{globalMaterial.metalness}</span>
+                                    <span>{materialSettings.metalness}</span>
                                 </div>
-                                <input type="range" min="0" max="1" step="0.1" value={globalMaterial.metalness} onChange={e => setGlobalMaterial(p => ({ ...p, metalness: parseFloat(e.target.value) }))} className="w-full h-1 bg-zinc-200 rounded-lg appearance-none accent-indigo-600" />
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.01"
+                                    value={materialSettings.metalness}
+                                    onChange={(e) => setMaterialSetting("metalness", Number(e.target.value))}
+                                    className="w-full h-1 bg-zinc-200 rounded-lg appearance-none accent-indigo-600"
+                                />
                             </div>
+
                         </div>
                     </div>
 
@@ -178,11 +245,29 @@ const DesignPhase = ({ glbUrl, meshConfig, meshTextures, globalMaterial, activeS
 
                     {/* Canvas */}
                     <div className="flex-1 bg-gradient-to-br from-indigo-50/40 via-purple-50/20 to-white/50">
-                        <Canvas camera={{ position: [0, 0, 4.5], fov: 45 }} gl={{ preserveDrawingBuffer: true, antialias: true }} dpr={[1, 1.5]}>
-                            <ambientLight intensity={0.8} />
-                            <directionalLight position={[2, 5, 2]} intensity={1.5} shadow-mapSize={[1024, 1024]} />
-                            <spotLight position={[-5, 5, -5]} intensity={1} color="#ffffff" />
-                            <Environment preset="city" />
+                        <Canvas
+                            shadows
+                            camera={{ position: [0, 0, 4.5], fov: 45 }}
+                            gl={{
+                                preserveDrawingBuffer: true,
+                                antialias: true,
+                                toneMapping: 3, // THREE.ACESFilmicToneMapping
+                                toneMappingExposure: 1
+                            }}
+                            dpr={[1, 1.5]}
+                        >
+                            <ambientLight intensity={0.3} />
+                            <directionalLight
+                                position={[5, 10, 5]}
+                                intensity={0.8}
+                                castShadow
+                                shadow-mapSize={[1024, 1024]}
+                            />
+                            {/* HDR Environment - Cache busted once on mount */}
+                            <Environment files={hdrUrl} background={false} />
+
+                            {/* <Environment preset="city" /> */}
+
                             <React.Suspense fallback={<Loader />}>
                                 <Center>
                                     <DynamicModel
@@ -192,8 +277,14 @@ const DesignPhase = ({ glbUrl, meshConfig, meshTextures, globalMaterial, activeS
                                         setMeshList={() => { }}
                                     />
                                 </Center>
+                                <ContactShadows
+                                    position={[0, -1.1, 0]}
+                                    opacity={0.45}
+                                    scale={10}
+                                    blur={2}
+                                />
                             </React.Suspense>
-                            <OrbitControls minDistance={2} maxDistance={8} enablePan={false} autoRotate autoRotateSpeed={0.5} />
+                            <OrbitControls minDistance={2} maxDistance={8} enablePan={false} />
                         </Canvas>
                     </div>
 

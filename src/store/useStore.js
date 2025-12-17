@@ -12,6 +12,27 @@ export const useStore = create((set, get) => ({
   setGlbUrl: (url) => set({ glbUrl: url }),
   setMeshes: (meshes) => set({ meshes }),
 
+  // Admin / Material Configuration
+  materialSettings: {
+    roughness: 0.75,
+    metalness: 0.0,
+    sheen: 0.6,
+    sheenRoughness: 0.7,
+  },
+  setMaterialSetting: (key, value) =>
+    set((state) => ({
+      materialSettings: {
+        ...state.materialSettings,
+        [key]: value
+      }
+    })),
+  saveMaterialConfiguration: () => {
+    const settings = get().materialSettings;
+    console.log("Saving Configuration:", JSON.stringify(settings, null, 2));
+    // In a real app, this would POST to an API
+    alert("Configuration Saved! (Check Console)");
+  },
+
   // Phase 2: UV Islands (from SVG)
   uvIslands: [], // [{ id, pathData, meshId, layout: {x,y,scale,rotation} }]
   setUvIslands: (islands) => set({ uvIslands: islands }),
