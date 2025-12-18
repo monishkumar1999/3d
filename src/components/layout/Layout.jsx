@@ -1,28 +1,28 @@
 import React, { useState } from "react";
 // 1. Import NavLink
-import { NavLink } from "react-router-dom"; 
-import { 
-  User, 
-  Settings, 
-  Menu, 
-  X, 
-  LogOut, 
-  LayoutDashboard, 
-  ShoppingBag, 
+import { NavLink } from "react-router-dom";
+import {
+  User,
+  Settings,
+  Menu,
+  X,
+  LogOut,
+  LayoutDashboard,
+  ShoppingBag,
   PieChart,
   Box,
-  Palette
+  Palette,
+  Layers,
+  GitMerge
 } from "lucide-react";
 
 // Sidebar configuration
 const SIDEBAR_ITEMS = [
+  { icon: LayoutDashboard, label: "Dashboard", href: "/" },
+  { icon: Layers, label: "Categories", href: "/categories" },
+  { icon: GitMerge, label: "Subcategories", href: "/subcategories" },
   { icon: Box, label: "Product Catalog", href: "/catalog" },
   { icon: Palette, label: "Customization Studio", href: "/studio" },
-  { icon: LayoutDashboard, label: "Dashboard", href: "/" },
-  { icon: ShoppingBag, label: "Orders", href: "/orders" },
-  { icon: User, label: "Customers", href: "/customers" },
-  { icon: PieChart, label: "Analytics", href: "/analytics" },
-  { icon: Settings, label: "Settings", href: "/settings" },
   { icon: Settings, label: "UvMap", href: "/uvMap" },
 ];
 
@@ -30,16 +30,14 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
   return (
     <>
       <div
-        className={`fixed inset-0 z-20 bg-black/50 transition-opacity lg:hidden ${
-          isOpen ? "opacity-100 visible" : "opacity-0 invisible"
-        }`}
+        className={`fixed inset-0 z-20 bg-black/50 transition-opacity lg:hidden ${isOpen ? "opacity-100 visible" : "opacity-0 invisible"
+          }`}
         onClick={toggleSidebar}
       ></div>
 
       <aside
-        className={`fixed inset-y-0 left-0 z-30 w-64 bg-slate-900 text-white transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-auto ${
-          isOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        className={`fixed inset-y-0 left-0 z-30 w-64 bg-slate-900 text-white transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-auto ${isOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
       >
         <div className="flex items-center justify-between h-16 px-6 bg-slate-950 border-b border-slate-800">
           <span className="text-xl font-bold tracking-wider text-white">
@@ -58,10 +56,9 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
               to={item.href}
               onClick={() => window.innerWidth < 1024 && toggleSidebar()} // Close sidebar on mobile click
               className={({ isActive }) =>
-                `flex items-center px-4 py-3 transition-all duration-200 rounded-lg group ${
-                  isActive
-                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-900/20" // Active Style
-                    : "text-slate-300 hover:bg-slate-800 hover:text-white"      // Inactive Style
+                `flex items-center px-4 py-3 transition-all duration-200 rounded-lg group ${isActive
+                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-900/20" // Active Style
+                  : "text-slate-300 hover:bg-slate-800 hover:text-white"      // Inactive Style
                 }`
               }
             >
@@ -96,11 +93,11 @@ const Header = ({ toggleSidebar }) => {
       </div>
       <div className="flex items-center space-x-4">
         <div className="hidden md:block text-right">
-            <p className="text-sm font-medium text-gray-700">John Doe</p>
-            <p className="text-xs text-gray-500">Admin</p>
+          <p className="text-sm font-medium text-gray-700">John Doe</p>
+          <p className="text-xs text-gray-500">Admin</p>
         </div>
         <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-bold">
-            J
+          J
         </div>
       </div>
     </header>

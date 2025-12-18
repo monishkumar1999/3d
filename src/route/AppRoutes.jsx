@@ -2,6 +2,9 @@ import React from "react";
 import { Routes, Route, Navigate, Outlet } from "react-router-dom";
 import Layout from "../components/layout/Layout"; // <--- Import Layout here
 import UvMap from "../3d/UvMap";
+import { Logins } from "../components/auth/Logins";
+import CategoryManager from "../components/admin/CategoryManager";
+import SubCategoryManager from "../components/admin/SubCategoryManager";
 
 
 // ----------------------------------
@@ -16,11 +19,12 @@ const ProtectedRoutesWithLayout = () => (
 const AppRoutes = () => {
   return (
     <Routes>
-     
+      <Route path="/login" element={<Logins />} />
       <Route element={<ProtectedRoutesWithLayout />}>
         {/* Redirect root path to catalog for logged-in users */}
-      
-     
+
+        <Route path="/categories" element={<CategoryManager />} />
+        <Route path="/subcategories" element={<SubCategoryManager />} />
         <Route path="/uvMap" element={<UvMap />} />
 
       </Route>
