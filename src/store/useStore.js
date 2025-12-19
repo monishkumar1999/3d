@@ -12,6 +12,12 @@ export const useStore = create((set, get) => ({
   setGlbUrl: (url) => set({ glbUrl: url }),
   setMeshes: (meshes) => set({ meshes }),
 
+  // Product Details
+  productName: "",
+  subcategory: "",
+  setProductName: (name) => set({ productName: name }),
+  setSubcategory: (sub) => set({ subcategory: sub }),
+
   // Admin / Material Configuration
   materialSettings: {
     roughness: 0.75,

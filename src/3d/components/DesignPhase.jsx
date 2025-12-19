@@ -6,6 +6,8 @@ import { useStore } from "../../store/useStore";
 
 import DynamicModel from "./DynamicModel";
 import PatternZone from "./PatternZone";
+import api from "../../api/axios";
+import { processWireframeToSolid } from "../utils/maskProcessor";
 
 // Helper Button
 const Button = ({ children, onClick, variant = "primary", className = "", disabled = false, icon: Icon }) => {
@@ -43,10 +45,70 @@ const DesignPhase = ({ glbUrl, meshConfig, meshTextures, globalMaterial, activeS
     const [meshColors, setMeshColors] = useState({}); // Per-mesh coloring
 
     // Store
-    const { materialSettings, setMaterialSetting, saveMaterialConfiguration } = useStore();
+    const { materialSettings, setMaterialSetting, saveMaterialConfiguration, productName, subcategory } = useStore();
+    const [isSaving, setIsSaving] = useState(false);
 
     // Bust cache once on mount to handle the empty file replacement
     const [hdrUrl] = useState(`/hdr/studio_soft.hdr?v=${Date.now()}`);
+
+    const handleSaveProduct = async () => {
+        setIsSaving(true);
+        try {
+            const formData = new FormData();
+
+            // Product Details
+            formData.append('product_details[name]', productName || 'Untitled Product');
+            formData.append('product_details[subcategory]', subcategory);
+
+            // 1. Fetch GLB Blob
+            const glbRes = await fetch(glbUrl);
+            const glbBlob = await glbRes.blob();
+            formData.append('product_details[glb]', glbBlob, 'model.glb');
+
+            // 2. Process Masks
+            // Iterate over active masks and map them to indexed svgdetails
+            let maskIndex = 0;
+            const processingPromises = Object.entries(meshConfig)
+                .filter(([_, cfg]) => cfg.maskUrl)
+                .map(async ([meshName, cfg]) => {
+                    try {
+                        const currentIndex = maskIndex++; // Capture current index and increment
+
+                        // Mesh Name
+                        formData.append(`svgdetails[${currentIndex}][mesh_name]`, meshName);
+
+                        // Processed White Mask
+                        const solidDataUrl = await processWireframeToSolid(cfg.maskUrl);
+                        const res = await fetch(solidDataUrl);
+                        const blob = await res.blob();
+                        formData.append(`svgdetails[${currentIndex}][white]`, blob, `${meshName}_white.png`);
+
+                        // Original Wireframe
+                        const origRes = await fetch(cfg.maskUrl);
+                        const origBlob = await origRes.blob();
+                        formData.append(`svgdetails[${currentIndex}][original]`, origBlob, `${meshName}_original.svg`);
+
+                    } catch (err) {
+                        console.error(`Failed to process mask for ${meshName}`, err);
+                    }
+                });
+
+            await Promise.all(processingPromises);
+
+            // 3. Send API Request
+            await api.post('/product/create', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+
+            alert('Product Saved Successfully!');
+
+        } catch (error) {
+            console.error("Save failed", error);
+            alert("Failed to save product. Check console.");
+        } finally {
+            setIsSaving(false);
+        }
+    };
 
 
     return (
@@ -204,7 +266,7 @@ const DesignPhase = ({ glbUrl, meshConfig, meshTextures, globalMaterial, activeS
                 <div className="absolute top-8 left-8 z-10 pointer-events-none">
                     <div className="bg-white/90 backdrop-blur-md px-4 py-2 rounded-full shadow-sm border border-white/50 pointer-events-auto inline-flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                        <h1 className="font-bold text-zinc-800 text-xs">Editor Live <span className="text-zinc-300 mx-2">|</span> <span className="text-indigo-600">Project 01</span></h1>
+                        <h1 className="font-bold text-zinc-800 text-xs">Editor Live <span className="text-zinc-300 mx-2">|</span> <span className="text-indigo-600">{productName || 'Untitled Project'}</span></h1>
                     </div>
                 </div>
 
@@ -291,11 +353,14 @@ const DesignPhase = ({ glbUrl, meshConfig, meshTextures, globalMaterial, activeS
                     {/* Bottom Action Bar */}
                     <div className="p-6 bg-white/60 backdrop-blur-md border-t border-white/50 flex flex-col gap-3">
                         <div className="flex gap-4">
-                            <Button variant="secondary" className="flex-1 py-4 text-xs">
-                                Share Mockup
-                            </Button>
-                            <Button variant="primary" icon={Download} className="flex-[2] py-4 shadow-xl shadow-indigo-500/20">
-                                Export GLB
+                            <Button
+                                onClick={handleSaveProduct}
+                                disabled={isSaving}
+                                variant="primary"
+                                icon={isSaving ? undefined : Save}
+                                className="w-full py-4 shadow-xl shadow-indigo-500/20"
+                            >
+                                {isSaving ? "Saving..." : "Save Product"}
                             </Button>
                         </div>
                     </div>

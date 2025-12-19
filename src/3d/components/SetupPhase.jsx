@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Environment, OrbitControls } from "@react-three/drei";
-import { Upload, Box, MousePointer2, GripVertical, Check, Plus, LayoutGrid } from "lucide-react";
+import { Upload, Box, MousePointer2, GripVertical, Check, Plus, LayoutGrid, AlertCircle } from "lucide-react";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import DynamicModel from "./DynamicModel";
+import useStore from "../../store/useStore";
+import api from "../../api/axios";
 
 // Helper Button (same style)
 const Button = ({ children, onClick, variant = "primary", className = "", disabled = false, icon: Icon }) => {
@@ -86,6 +88,28 @@ const MeshCard = ({ mesh, maskUrl, onUpload, onRemove, isPlaced }) => {
 const SetupPhase = ({ glbUrl, meshList, meshConfig, globalMaterial, setGlbUrl, handleGlb, handleMaskUpload, setMeshList, onLaunch }) => {
 
     const [placedMeshes, setPlacedMeshes] = useState([]);
+    const { productName, setProductName, subcategory, setSubcategory } = useStore();
+    const [availableSubcategories, setAvailableSubcategories] = useState([]);
+    const [loadingSubs, setLoadingSubs] = useState(false);
+
+    // Fetch Subcategories
+    useEffect(() => {
+        const fetchSubcategories = async () => {
+            setLoadingSubs(true);
+            try {
+                const response = await api.get('/admin-subcategory');
+                setAvailableSubcategories(response.data);
+            } catch (error) {
+                console.error("Failed to fetch subcategories", error);
+            } finally {
+                setLoadingSubs(false);
+            }
+        };
+
+        if (glbUrl) {
+            fetchSubcategories();
+        }
+    }, [glbUrl]);
 
     // When meshes are detected, reset placement
     useEffect(() => {
@@ -132,6 +156,38 @@ const SetupPhase = ({ glbUrl, meshList, meshConfig, globalMaterial, setGlbUrl, h
                         </div>
                     ) : (
                         <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+
+                            {/* Product Details Section */}
+                            <div className="space-y-3 mb-6 bg-zinc-50 p-3 rounded-xl border border-zinc-100">
+                                <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Product Info</h3>
+
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Product Name</label>
+                                    <input
+                                        type="text"
+                                        value={productName}
+                                        onChange={(e) => setProductName(e.target.value)}
+                                        placeholder="e.g. Heavyweight Tee"
+                                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+                                    />
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Subcategory</label>
+                                    <select
+                                        value={subcategory}
+                                        onChange={(e) => setSubcategory(e.target.value)}
+                                        disabled={loadingSubs}
+                                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500 transition-colors appearance-none disabled:opacity-50"
+                                    >
+                                        <option value="">{loadingSubs ? "Loading..." : "Select Category..."}</option>
+                                        {availableSubcategories.map(sub => (
+                                            <option key={sub.id} value={sub.id}>{sub.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+
                             <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-2 mb-2">Available Parts ({unplacedMeshes.length})</h3>
                             <AnimatePresence>
                                 {unplacedMeshes.map(mesh => (
@@ -174,7 +230,7 @@ const SetupPhase = ({ glbUrl, meshList, meshConfig, globalMaterial, setGlbUrl, h
                         <div className="pointer-events-auto">
                             <Button
                                 onClick={onLaunch}
-                                disabled={placedMeshes.length === 0 || !allPlacedWithConfig}
+                                disabled={placedMeshes.length === 0 || !allPlacedWithConfig || !productName || !subcategory} // Require name and category
                                 variant="primary"
                                 className="shadow-xl"
                             >
