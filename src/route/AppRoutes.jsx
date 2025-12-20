@@ -5,6 +5,8 @@ import UvMap from "../3d/UvMap";
 import { Logins } from "../components/auth/Logins";
 import CategoryManager from "../components/admin/CategoryManager";
 import SubCategoryManager from "../components/admin/SubCategoryManager";
+import ProductList from "../components/products/ProductList";
+import ProductEditor from "../components/products/ProductEditor";
 
 
 // ----------------------------------
@@ -25,6 +27,8 @@ const AppRoutes = () => {
 
         <Route path="/categories" element={<CategoryManager />} />
         <Route path="/subcategories" element={<SubCategoryManager />} />
+        <Route path="/products" element={<ProductList />} />
+        <Route path="/product/edit/:id" element={<ProductEditor />} />
         <Route path="/uvMap" element={<UvMap />} />
 
       </Route>

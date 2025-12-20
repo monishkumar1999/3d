@@ -21,6 +21,7 @@ const SIDEBAR_ITEMS = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/" },
   { icon: Layers, label: "Categories", href: "/categories" },
   { icon: GitMerge, label: "Subcategories", href: "/subcategories" },
+  { icon: ShoppingBag, label: "Product List", href: "/products" },
   { icon: Box, label: "Product Catalog", href: "/catalog" },
   { icon: Palette, label: "Customization Studio", href: "/studio" },
   { icon: Settings, label: "UvMap", href: "/uvMap" },

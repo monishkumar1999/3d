@@ -98,7 +98,9 @@ const SetupPhase = ({ glbUrl, meshList, meshConfig, globalMaterial, setGlbUrl, h
             setLoadingSubs(true);
             try {
                 const response = await api.get('/admin-subcategory');
-                setAvailableSubcategories(response.data);
+                // Handle potentially different response structures
+                const categories = response.data.categories || response.data || [];
+                setAvailableSubcategories(Array.isArray(categories) ? categories : []);
             } catch (error) {
                 console.error("Failed to fetch subcategories", error);
             } finally {
