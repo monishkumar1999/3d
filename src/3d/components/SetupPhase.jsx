@@ -161,7 +161,7 @@ const SetupPhase = ({ glbUrl, meshList, meshConfig, globalMaterial, setGlbUrl, h
 
                             {/* Product Details Section */}
                             <div className="space-y-3 mb-6 bg-zinc-50 p-3 rounded-xl border border-zinc-100">
-                                <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Product Info</h3>
+                                <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-1">Products Info</h3>
 
                                 <div className="space-y-1">
                                     <label className="text-[10px] font-bold text-zinc-500 uppercase">Product Name</label>
@@ -188,6 +188,8 @@ const SetupPhase = ({ glbUrl, meshList, meshConfig, globalMaterial, setGlbUrl, h
                                         ))}
                                     </select>
                                 </div>
+
+                                
                             </div>
 
                             <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-2 mb-2">Available Parts ({unplacedMeshes.length})</h3>

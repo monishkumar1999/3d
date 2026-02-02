@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Environment, OrbitControls, Center, ContactShadows } from "@react-three/drei";
-import { Type, Palette, Upload, Download, Image as ImageIcon, ChevronLeft, X, Save } from "lucide-react";
+import { Type, Palette, Upload, Download, Image as ImageIcon, ChevronLeft, X, Save, Camera } from "lucide-react";
 import { useStore } from "../../store/useStore";
 
 import DynamicModel from "./DynamicModel";
@@ -45,20 +45,66 @@ const DesignPhase = ({ glbUrl, meshConfig, meshTextures, globalMaterial, activeS
     const [meshColors, setMeshColors] = useState({}); // Per-mesh coloring
 
     // Store
-    const { materialSettings, setMaterialSetting, saveMaterialConfiguration, productName, subcategory } = useStore();
+    const { materialSettings, setMaterialSetting, saveMaterialConfiguration, productName, subcategory, setProductName, setSubcategory } = useStore();
     const [isSaving, setIsSaving] = useState(false);
+
+    // Save Modal State
+    const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
+    const [saveSnapshot, setSaveSnapshot] = useState(null);
+    const [categories, setCategories] = useState([]);
+    const [subCategories, setSubCategories] = useState([]);
+
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                const [catRes, subRes] = await Promise.all([
+                    api.get('/admin-category/view'),
+                    api.get('/admin-subcategory')
+                ]);
+                setCategories(catRes.data.category || []);
+                setSubCategories(subRes.data || []);
+            } catch (err) {
+                console.error("Failed to fetch categories", err);
+            }
+        };
+        fetchData();
+    }, []);
 
     // Bust cache once on mount to handle the empty file replacement
     const [hdrUrl] = useState(`/hdr/studio_soft.hdr?v=${Date.now()}`);
 
-    const handleSaveProduct = async () => {
+    const handleSaveClick = () => {
+        // 1. Capture Screenshot
+        try {
+            const canvas = document.querySelector('canvas');
+            if (canvas) {
+                const dataUrl = canvas.toDataURL('image/png');
+                setSaveSnapshot(dataUrl);
+            }
+        } catch (e) {
+            console.error("Snapshot failed", e);
+        }
+        setIsSaveModalOpen(true);
+    };
+
+    const handleConfirmSave = async (formDataPayload) => {
         setIsSaving(true);
         try {
             const formData = new FormData();
 
             // Product Details
-            formData.append('product_details[name]', productName || 'Untitled Product');
-            formData.append('product_details[subcategory]', subcategory);
+            formData.append('product_details[name]', formDataPayload.name);
+            formData.append('product_details[category]', formDataPayload.categoryId);
+            formData.append('product_details[subcategory]', formDataPayload.subcategoryId);
+
+            // Update Store to reflect changes
+            setProductName(formDataPayload.name);
+            setSubcategory(formDataPayload.subcategoryId);
+
+            // Image (Blob)
+            if (formDataPayload.imageBlob) {
+                formData.append('product_details[image]', formDataPayload.imageBlob, 'product_preview.png');
+            }
 
             // 1. Fetch GLB Blob
             const glbRes = await fetch(glbUrl);
@@ -101,6 +147,7 @@ const DesignPhase = ({ glbUrl, meshConfig, meshTextures, globalMaterial, activeS
             });
 
             alert('Product Saved Successfully!');
+            setIsSaveModalOpen(false);
 
         } catch (error) {
             console.error("Save failed", error);
@@ -354,7 +401,7 @@ const DesignPhase = ({ glbUrl, meshConfig, meshTextures, globalMaterial, activeS
                     <div className="p-6 bg-white/60 backdrop-blur-md border-t border-white/50 flex flex-col gap-3">
                         <div className="flex gap-4">
                             <Button
-                                onClick={handleSaveProduct}
+                                onClick={handleSaveClick}
                                 disabled={isSaving}
                                 variant="primary"
                                 icon={isSaving ? undefined : Save}
@@ -366,6 +413,19 @@ const DesignPhase = ({ glbUrl, meshConfig, meshTextures, globalMaterial, activeS
                     </div>
                 </div>
             </div>
+            {isSaveModalOpen && (
+                <SaveProductModal
+                    isOpen={isSaveModalOpen}
+                    onClose={() => setIsSaveModalOpen(false)}
+                    onConfirm={handleConfirmSave}
+                    isSaving={isSaving}
+                    initialName={productName}
+                    initialSubcategoryId={subcategory}
+                    snapshotUrl={saveSnapshot}
+                    categories={categories}
+                    subCategories={subCategories}
+                />
+            )}
         </div>
     );
 };
@@ -378,5 +438,172 @@ const TooltipButton = ({ icon: Icon, onClick, isActive }) => (
         </button>
     </div>
 );
+
+
+const SaveProductModal = ({ isOpen, onClose, onConfirm, isSaving, initialName, initialSubcategoryId, snapshotUrl, categories, subCategories }) => {
+    // Find initial category based on initial subcategory if possible
+    const initialCatId = subCategories.find(s => s.id == initialSubcategoryId)?.categoryId || "";
+
+    const [name, setName] = useState(initialName || "");
+    const [categoryId, setCategoryId] = useState(initialCatId);
+    const [subcategoryId, setSubcategoryId] = useState(initialSubcategoryId || "");
+    const [imagePreview, setImagePreview] = useState(snapshotUrl);
+    const [imageFile, setImageFile] = useState(null);
+
+    // Update if props change
+    useEffect(() => {
+        if (isOpen) {
+            setName(initialName || "");
+            const derivedCatId = subCategories.find(s => s.id == initialSubcategoryId)?.categoryId || "";
+            setCategoryId(derivedCatId);
+            setSubcategoryId(initialSubcategoryId || "");
+            setImagePreview(snapshotUrl);
+            setImageFile(null);
+        }
+    }, [isOpen, initialName, initialSubcategoryId, snapshotUrl, subCategories]);
+
+    // Handle Image Upload
+    const handleImageUpload = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            setImageFile(file);
+            setImagePreview(URL.createObjectURL(file));
+        }
+    };
+
+    const handleSave = async () => {
+        let blob = imageFile;
+        if (!blob && snapshotUrl && !imageFile) {
+            try {
+                const res = await fetch(snapshotUrl);
+                blob = await res.blob();
+            } catch (e) {
+                console.error("Failed to convert snapshot to blob", e);
+            }
+        }
+        
+        onConfirm({ 
+            name, 
+            categoryId, 
+            subcategoryId, 
+            imageBlob: blob 
+        });
+    };
+
+    const filteredSubCategories = subCategories.filter(s => s.categoryId == categoryId);
+
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+                <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                    <h3 className="font-bold text-lg text-gray-800">Save Product</h3>
+                    <button onClick={onClose} className="p-2 rounded-lg text-gray-400 hover:bg-gray-200 hover:text-gray-600 transition-colors">
+                        <X size={20} />
+                    </button>
+                </div>
+                
+                <div className="p-6 overflow-y-auto space-y-5">
+                    {/* Image Preview */}
+                    <div className="space-y-2">
+                        <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Product Image</label>
+                        <div className="relative group rounded-xl overflow-hidden border border-gray-200 bg-gray-50 aspect-video flex items-center justify-center">
+                            {imagePreview ? (
+                                <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                            ) : (
+                                <div className="text-gray-300 flex flex-col items-center">
+                                    <ImageIcon size={32} />
+                                    <span className="text-xs mt-2">No Preview</span>
+                                </div>
+                            )}
+                            
+                            <label className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                                <div className="bg-white text-gray-800 px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 shadow-lg">
+                                    <Camera size={16} />
+                                    Change Image
+                                </div>
+                                <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                            </label>
+                        </div>
+                    </div>
+
+                    {/* Name */}
+                    <div className="space-y-1">
+                        <label className="text-sm font-medium text-gray-700">Product Name</label>
+                        <input 
+                            type="text" 
+                            className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            placeholder="e.g. Summer Shirt Design"
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        {/* Category */}
+                        <div className="space-y-1">
+                            <label className="text-sm font-medium text-gray-700">Category</label>
+                            <select 
+                                className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all bg-white"
+                                value={categoryId}
+                                onChange={(e) => {
+                                    setCategoryId(e.target.value);
+                                    setSubcategoryId(""); // Reset sub when cat changes
+                                }}
+                            >
+                                <option value="" disabled>Select Category</option>
+                                {categories.map(cat => (
+                                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Subcategory */}
+                        <div className="space-y-1">
+                            <label className="text-sm font-medium text-gray-700">Subcategory</label>
+                            <select 
+                                className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all bg-white"
+                                value={subcategoryId}
+                                onChange={(e) => setSubcategoryId(e.target.value)}
+                                disabled={!categoryId}
+                            >
+                                <option value="" disabled>Select Subcategory</option>
+                                {filteredSubCategories.map(sub => (
+                                    <option key={sub.id} value={sub.id}>{sub.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-5 border-t border-gray-100 bg-gray-50/50 flex gap-3 justify-end">
+                    <button 
+                        onClick={onClose}
+                        disabled={isSaving}
+                        className="px-5 py-2.5 rounded-xl font-semibold text-gray-600 hover:bg-gray-200 transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        onClick={handleSave}
+                        disabled={isSaving || !name || !categoryId || !subcategoryId}
+                        className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                        {isSaving ? (
+                            <>
+                                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                                Saving...
+                            </>
+                        ) : (
+                            <>
+                                <Save size={18} />
+                                Confirm Save
+                            </>
+                        )}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 export default DesignPhase;

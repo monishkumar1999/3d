@@ -54,7 +54,7 @@ const ProductList = () => {
                     <table className="w-full text-left border-collapse">
                         <thead className="bg-gray-50/50 border-b border-gray-100 text-xs uppercase text-gray-500 font-semibold tracking-wider">
                             <tr>
-                                <th className="p-4 pl-6">Product Info</th>
+                                <th className="p-4 pl-6">Products Info</th>
                                 <th className="p-4">ID</th>
                                 <th className="p-4">Status</th>
                                 <th className="p-4 text-right pr-6">Actions</th>
