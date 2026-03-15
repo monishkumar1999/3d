@@ -1,19 +1,43 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Center, ContactShadows } from '@react-three/drei';
 import { Stage, Layer, Image as KImage, Transformer, Rect, Group } from 'react-konva';
-import { Upload, Palette, Image as ImageIcon, X } from 'lucide-react';
+import { Upload, Palette, Image as ImageIcon, X, Save, Camera } from 'lucide-react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { processWireframeToSolid } from '../utils/maskProcessor';
 import api from '../../api/axios';
-import { Save, Camera } from 'lucide-react';
 
 // ── Color Presets ──
 const COLOR_PRESETS = [
     '#ffffff', '#e2e8f0', '#94a3b8', '#1e293b',
     '#dc2626', '#f97316', '#f59e0b', '#22c55e',
     '#2563eb', '#7c3aed', '#ec4899', '#be185d',
+];
+
+const MIN_TEXTURE_REPEAT = 0.25;
+const MAX_TEXTURE_REPEAT = 24;
+const DEFAULT_MATERIAL_SETTINGS = {
+    roughness: 0.8,
+    metalness: 0,
+    normalIntensity: 1,
+    textureRepeat: 1,
+};
+const EMPTY_PBR_TEXTURES = {
+    baseColor: null,
+    normal: null,
+    roughness: null,
+    metalness: null,
+    ao: null,
+    orm: null,
+};
+const PBR_MAP_SLOTS = [
+    { key: 'baseColor', label: 'Base', hint: 'Albedo / color' },
+    { key: 'normal', label: 'Normal', hint: 'Surface detail' },
+    { key: 'roughness', label: 'Rough', hint: 'Gloss control' },
+    { key: 'metalness', label: 'Metal', hint: 'Metal mask' },
+    { key: 'ao', label: 'AO', hint: 'Ambient occlusion' },
+    { key: 'orm', label: 'ORM', hint: 'Packed AO/R/M' },
 ];
 
 // ── Hex ↔ RGB helpers ──
@@ -64,6 +88,116 @@ const rgbToHex = (r, g, b) => '#' + [r, g, b].map(x => x.toString(16).padStart(2
 const hexToHsv = (hex) => {
     const { r, g, b } = hexToRgb(hex);
     return rgbToHsv(r, g, b);
+};
+
+const loadImageElement = (src) => new Promise((resolve, reject) => {
+    if (!src) {
+        resolve(null);
+        return;
+    }
+
+    const img = new window.Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+    img.src = src;
+});
+
+const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error(`Failed to read file: ${file?.name || 'unknown'}`));
+    reader.readAsDataURL(file);
+});
+
+const clampTextureRepeat = (value) => {
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) return 1;
+    return Math.min(MAX_TEXTURE_REPEAT, Math.max(MIN_TEXTURE_REPEAT, numericValue));
+};
+
+const formatTextureRepeat = (value) => {
+    const safeValue = clampTextureRepeat(value);
+    if (safeValue >= 1) {
+        return Number.isInteger(safeValue) ? `${safeValue}` : safeValue.toFixed(1).replace(/\.0$/, '');
+    }
+    return safeValue.toFixed(2).replace(/0$/, '').replace(/\.0$/, '');
+};
+
+const buildScaledCanvas = (sourceCanvas, width, height) => {
+    if (!sourceCanvas || !width || !height) return null;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(sourceCanvas, 0, 0, width, height);
+    return canvas;
+};
+
+const buildRepeatedTextureCanvas = ({ image, width, height, repeat = 1 }) => {
+    if (!image || !width || !height) return null;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
+
+    const safeRepeat = clampTextureRepeat(repeat);
+    const tileWidth = width / safeRepeat;
+    const tileHeight = height / safeRepeat;
+    const columns = Math.max(1, Math.ceil(safeRepeat));
+    const rows = Math.max(1, Math.ceil(safeRepeat));
+    const offsetX = (width - (columns * tileWidth)) / 2;
+    const offsetY = (height - (rows * tileHeight)) / 2;
+
+    for (let y = 0; y < rows; y += 1) {
+        for (let x = 0; x < columns; x += 1) {
+            ctx.drawImage(
+                image,
+                offsetX + (x * tileWidth),
+                offsetY + (y * tileHeight),
+                tileWidth,
+                tileHeight
+            );
+        }
+    }
+
+    return canvas;
+};
+
+const composeTextureDataUrl = ({ overlayCanvas, tintedBaseCanvas, pbrBaseCanvas, width, height }) => {
+    const compositeCanvas = document.createElement('canvas');
+    compositeCanvas.width = width;
+    compositeCanvas.height = height;
+
+    const ctx = compositeCanvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
+
+    if (pbrBaseCanvas) {
+        ctx.drawImage(pbrBaseCanvas, 0, 0, width, height);
+
+        if (tintedBaseCanvas) {
+            ctx.globalCompositeOperation = 'multiply';
+            ctx.drawImage(tintedBaseCanvas, 0, 0, width, height);
+            ctx.globalCompositeOperation = 'destination-in';
+            ctx.drawImage(tintedBaseCanvas, 0, 0, width, height);
+            ctx.globalCompositeOperation = 'source-over';
+        }
+    } else if (tintedBaseCanvas) {
+        ctx.drawImage(tintedBaseCanvas, 0, 0, width, height);
+    }
+
+    if (overlayCanvas) {
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(overlayCanvas, 0, 0, width, height);
+    }
+
+    return compositeCanvas.toDataURL('image/png');
 };
 
 // ═══════════════════════════════════════════
@@ -368,37 +502,297 @@ const useDebounce = (callback, delay) => {
     }, [callback, delay]);
 };
 
+const PbrTextureUploader = ({ pbrTextures, materialSettings, onUpload, onClear, onClearAll, onMaterialSettingChange }) => {
+    const hasAnyPbrMaps = PBR_MAP_SLOTS.some(({ key }) => Boolean(pbrTextures[key]));
+
+    return (
+        <div className="space-y-4">
+            <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1">
+                    <p className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider">PBR Maps</p>
+                    <p className="text-[11px] leading-5 text-zinc-500">Upload your PBR PNG maps and they will apply live on the 3D model.</p>
+                </div>
+                {hasAnyPbrMaps && (
+                    <button
+                        type="button"
+                        onClick={onClearAll}
+                        className="shrink-0 text-[10px] font-semibold text-red-500 hover:text-red-600 transition-colors"
+                    >
+                        Clear all
+                    </button>
+                )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+                {PBR_MAP_SLOTS.map(({ key, label, hint }) => {
+                    const currentFile = pbrTextures[key];
+                    return (
+                        <label
+                            key={key}
+                            className="group cursor-pointer rounded-2xl border border-zinc-200 bg-zinc-50/80 hover:bg-white hover:border-zinc-300 transition-all"
+                        >
+                            <input
+                                type="file"
+                                accept="image/png,image/jpeg,image/webp"
+                                onChange={(e) => onUpload(key, e)}
+                                className="hidden"
+                            />
+                            <div className="p-3 space-y-2">
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="text-[11px] font-semibold text-zinc-700 uppercase tracking-wide">{label}</span>
+                                    {currentFile ? (
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                onClear(key);
+                                            }}
+                                            className="w-6 h-6 rounded-full bg-white border border-zinc-200 flex items-center justify-center text-zinc-400 hover:text-red-500 hover:border-red-200 transition-colors"
+                                        >
+                                            <X size={12} />
+                                        </button>
+                                    ) : (
+                                        <span className="w-6 h-6 rounded-full bg-white border border-zinc-200 flex items-center justify-center text-zinc-400 group-hover:text-indigo-500 group-hover:border-indigo-200 transition-colors">
+                                            <Upload size={12} />
+                                        </span>
+                                    )}
+                                </div>
+                                <p className="text-[10px] text-zinc-400 uppercase tracking-wide">{hint}</p>
+                                <p className="text-[11px] font-medium text-zinc-500 truncate">
+                                    {currentFile?.name || 'Click to upload'}
+                                </p>
+                            </div>
+                        </label>
+                    );
+                })}
+            </div>
+
+            <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider">Texture Repeat</span>
+                    <span className="text-[10px] font-semibold text-zinc-500">{formatTextureRepeat(materialSettings.textureRepeat)}x</span>
+                </div>
+                <input
+                    type="range"
+                    min={MIN_TEXTURE_REPEAT}
+                    max={MAX_TEXTURE_REPEAT}
+                    step="0.25"
+                    value={materialSettings.textureRepeat}
+                    onChange={(e) => onMaterialSettingChange('textureRepeat', parseFloat(e.target.value))}
+                    className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none accent-indigo-500"
+                />
+            </div>
+
+            <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider">Normal Strength</span>
+                    <span className="text-[10px] font-semibold text-zinc-500">{(materialSettings.normalIntensity ?? 1).toFixed(1)}x</span>
+                </div>
+                <input
+                    type="range"
+                    min="0"
+                    max="2"
+                    step="0.1"
+                    value={materialSettings.normalIntensity ?? 1}
+                    onChange={(e) => onMaterialSettingChange('normalIntensity', parseFloat(e.target.value))}
+                    className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none accent-indigo-500"
+                />
+            </div>
+        </div>
+    );
+};
+
 
 // ═══════════════════════════════════════════
 // ── 3D Model Viewer ──
 // ═══════════════════════════════════════════
-const ModelViewer = ({ modelUrl, textureDataUrl }) => {
+const ModelViewer = ({ modelUrl, textureDataUrl, pbrTextures, materialSettings }) => {
     const [model, setModel] = useState(null);
-    const materialRef = useRef(null);
+    const managedTexturesRef = useRef([]);
+    const managedMaterialsRef = useRef([]);
+    const { gl } = useThree();
+
+    const disposeManagedResources = useCallback(() => {
+        managedTexturesRef.current.forEach((texture) => texture?.dispose?.());
+        managedTexturesRef.current = [];
+        managedMaterialsRef.current.forEach((material) => material?.dispose?.());
+        managedMaterialsRef.current = [];
+    }, []);
+
+    useEffect(() => () => {
+        disposeManagedResources();
+    }, [disposeManagedResources]);
 
     useEffect(() => {
-        if (!modelUrl) { setModel(null); return; }
+        if (!modelUrl) {
+            disposeManagedResources();
+            setModel(null);
+            return;
+        }
+
         const loader = new GLTFLoader();
-        loader.load(modelUrl, (gltf) => setModel(gltf.scene), undefined, (err) => console.error('GLB Error:', err));
-    }, [modelUrl]);
+        loader.load(modelUrl, (gltf) => {
+            const scene = gltf.scene;
+            scene.traverse((child) => {
+                if (!child.isMesh) return;
+                if (!child.userData.originalMat) {
+                    child.userData.originalMat = Array.isArray(child.material)
+                        ? child.material.map((material) => material.clone())
+                        : child.material.clone();
+                }
+                child.castShadow = true;
+                child.receiveShadow = true;
+            });
+            setModel(scene);
+        }, undefined, (err) => console.error('GLB Error:', err));
+    }, [disposeManagedResources, modelUrl]);
 
     useEffect(() => {
-        if (!model || !textureDataUrl) return;
-        const img = new Image();
-        img.src = textureDataUrl;
-        img.onload = () => {
-            const tex = new THREE.Texture(img);
-            tex.flipY = false;
-            tex.colorSpace = THREE.SRGBColorSpace;
-            tex.needsUpdate = true;
-            if (materialRef.current) materialRef.current.dispose();
-            const mat = new THREE.MeshStandardMaterial({ map: tex, side: THREE.DoubleSide, roughness: 0.8, metalness: 0 });
-            materialRef.current = mat;
+        if (!model) return;
+
+        let cancelled = false;
+
+        const registerTexture = (texture) => {
+            managedTexturesRef.current.push(texture);
+            return texture;
+        };
+
+        const registerMaterial = (material) => {
+            managedMaterialsRef.current.push(material);
+            return material;
+        };
+
+        const createTexture = (image, { colorSpace = null, repeat = 1 } = {}) => {
+            if (!image) return null;
+
+            const safeRepeat = clampTextureRepeat(repeat);
+            const texture = new THREE.Texture(image);
+            texture.flipY = false;
+            if (colorSpace) texture.colorSpace = colorSpace;
+            texture.anisotropy = gl.capabilities.getMaxAnisotropy();
+            texture.generateMipmaps = true;
+            texture.minFilter = THREE.LinearMipmapLinearFilter;
+            texture.magFilter = THREE.LinearFilter;
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(safeRepeat, safeRepeat);
+            if (safeRepeat < 1) {
+                const centeredOffset = (1 - safeRepeat) / 2;
+                texture.offset.set(centeredOffset, centeredOffset);
+            } else {
+                texture.offset.set(0, 0);
+            }
+            texture.needsUpdate = true;
+            return registerTexture(texture);
+        };
+
+        const cloneToPhysicalMaterial = (sourceMaterial) => {
+            if (sourceMaterial?.type === 'MeshPhysicalMaterial') {
+                return registerMaterial(sourceMaterial.clone());
+            }
+
+            const material = new THREE.MeshPhysicalMaterial();
+            material.name = sourceMaterial?.name || '';
+            if (sourceMaterial?.color) material.color.copy(sourceMaterial.color);
+            if (sourceMaterial?.map) material.map = sourceMaterial.map;
+            if (sourceMaterial?.normalMap) material.normalMap = sourceMaterial.normalMap;
+            if (sourceMaterial?.roughnessMap) material.roughnessMap = sourceMaterial.roughnessMap;
+            if (sourceMaterial?.metalnessMap) material.metalnessMap = sourceMaterial.metalnessMap;
+            if (sourceMaterial?.aoMap) material.aoMap = sourceMaterial.aoMap;
+            if (sourceMaterial?.transparent !== undefined) material.transparent = sourceMaterial.transparent;
+            if (sourceMaterial?.opacity !== undefined) material.opacity = sourceMaterial.opacity;
+            if (sourceMaterial?.side !== undefined) material.side = sourceMaterial.side;
+            return registerMaterial(material);
+        };
+
+        const loadOptionalImage = async (src) => {
+            if (!src) return null;
+            try {
+                return await loadImageElement(src);
+            } catch (error) {
+                console.warn('Skipping texture map:', error);
+                return null;
+            }
+        };
+
+        const runMaterialUpdate = async () => {
+            const [mainImage, normalImage, roughnessImage, metalnessImage, aoImage, ormImage] = await Promise.all([
+                loadOptionalImage(textureDataUrl),
+                loadOptionalImage(pbrTextures.normal?.dataUrl),
+                loadOptionalImage(pbrTextures.roughness?.dataUrl),
+                loadOptionalImage(pbrTextures.metalness?.dataUrl),
+                loadOptionalImage(pbrTextures.ao?.dataUrl),
+                loadOptionalImage(pbrTextures.orm?.dataUrl),
+            ]);
+
+            if (cancelled) return;
+
+            disposeManagedResources();
+
+            const textureRepeat = clampTextureRepeat(materialSettings.textureRepeat ?? DEFAULT_MATERIAL_SETTINGS.textureRepeat);
+            const uploadedMapTextures = {
+                normal: createTexture(normalImage, { repeat: textureRepeat }),
+                roughness: createTexture(roughnessImage, { repeat: textureRepeat }),
+                metalness: createTexture(metalnessImage, { repeat: textureRepeat }),
+                ao: createTexture(aoImage, { repeat: textureRepeat }),
+                orm: createTexture(ormImage, { repeat: textureRepeat }),
+            };
+            const mainTexture = createTexture(mainImage, { colorSpace: THREE.SRGBColorSpace });
+
             model.traverse((child) => {
-                if (child.isMesh) { child.material = mat; child.castShadow = true; child.receiveShadow = true; }
+                if (!child.isMesh) return;
+
+                const applyToMaterial = (sourceMaterial) => {
+                    const material = cloneToPhysicalMaterial(sourceMaterial);
+                    material.side = THREE.DoubleSide;
+                    material.roughness = materialSettings.roughness ?? DEFAULT_MATERIAL_SETTINGS.roughness;
+                    material.metalness = uploadedMapTextures.metalness || uploadedMapTextures.orm
+                        ? 1
+                        : (materialSettings.metalness ?? DEFAULT_MATERIAL_SETTINGS.metalness);
+
+                    if (mainTexture) {
+                        material.map = mainTexture;
+                        material.color.set('#ffffff');
+                    }
+
+                    if (uploadedMapTextures.orm) {
+                        material.aoMap = uploadedMapTextures.orm;
+                        material.roughnessMap = uploadedMapTextures.orm;
+                        material.metalnessMap = uploadedMapTextures.orm;
+                    }
+                    if (uploadedMapTextures.ao) material.aoMap = uploadedMapTextures.ao;
+                    if (uploadedMapTextures.roughness) material.roughnessMap = uploadedMapTextures.roughness;
+                    if (uploadedMapTextures.metalness) material.metalnessMap = uploadedMapTextures.metalness;
+                    if (uploadedMapTextures.normal) {
+                        material.normalMap = uploadedMapTextures.normal;
+                        if (!material.normalScale) material.normalScale = new THREE.Vector2(1, 1);
+                        const normalIntensity = materialSettings.normalIntensity ?? DEFAULT_MATERIAL_SETTINGS.normalIntensity;
+                        material.normalScale.set(normalIntensity, normalIntensity);
+                    }
+
+                    if (material.aoMap && !child.geometry.attributes.uv2 && child.geometry.attributes.uv) {
+                        child.geometry.setAttribute('uv2', child.geometry.attributes.uv);
+                    }
+
+                    material.needsUpdate = true;
+                    return material;
+                };
+
+                if (Array.isArray(child.userData.originalMat)) {
+                    child.material = child.userData.originalMat.map((material) => applyToMaterial(material));
+                } else {
+                    child.material = applyToMaterial(child.userData.originalMat || child.material);
+                }
             });
         };
-    }, [model, textureDataUrl]);
+
+        runMaterialUpdate();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [disposeManagedResources, gl, materialSettings, model, pbrTextures, textureDataUrl]);
 
     if (!model) return null;
     return <primitive object={model} />;
@@ -418,6 +812,8 @@ const TestUVWorkflow = ({ initialGlbUrl, initialMaskUrl, initialProductData }) =
     const [selectedStickerId, setSelectedStickerId] = useState(null);
     const [textureDataUrl, setTextureDataUrl] = useState(null);
     const [highlightImg, setHighlightImg] = useState(null);
+    const [materialSettings, setMaterialSettings] = useState(DEFAULT_MATERIAL_SETTINGS);
+    const [pbrTextures, setPbrTextures] = useState(() => ({ ...EMPTY_PBR_TEXTURES }));
 
     // Popup state
     const [popup, setPopup] = useState(null);
@@ -695,28 +1091,95 @@ const TestUVWorkflow = ({ initialGlbUrl, initialMaskUrl, initialProductData }) =
     };
 
     // ── Export Konva → Texture ──
+    const handlePbrTextureUpload = async (mapKey, e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        try {
+            const dataUrl = await readFileAsDataUrl(file);
+            const image = await loadImageElement(dataUrl);
+
+            setPbrTextures((prev) => ({
+                ...prev,
+                [mapKey]: {
+                    name: file.name,
+                    dataUrl,
+                    image,
+                }
+            }));
+
+            setTimeout(() => triggerExport(), 100);
+        } catch (error) {
+            console.error(`Failed to upload ${mapKey} texture`, error);
+            alert(`Failed to load ${file.name}. Please try another image.`);
+        } finally {
+            e.target.value = null;
+        }
+    };
+
+    const handleClearPbrTexture = (mapKey) => {
+        setPbrTextures((prev) => ({
+            ...prev,
+            [mapKey]: null,
+        }));
+        setTimeout(() => triggerExport(), 100);
+    };
+
+    const handleClearAllPbrTextures = () => {
+        setPbrTextures({ ...EMPTY_PBR_TEXTURES });
+        setTimeout(() => triggerExport(), 100);
+    };
+
+    const handleMaterialSettingChange = (key, value) => {
+        setMaterialSettings((prev) => ({
+            ...prev,
+            [key]: value,
+        }));
+        if (key === 'textureRepeat') {
+            setTimeout(() => triggerExport(), 100);
+        }
+    };
+
     const performExport = useCallback(() => {
         if (!stageRef.current || !maskImg) return;
         if (trRef.current) trRef.current.nodes([]);
 
-        // Hide highlight during export so it doesn't appear on the 3D model
+        const baseNode = stageRef.current.findOne('#base-color-canvas');
+        const wasBaseVisible = baseNode ? baseNode.visible() : false;
         const highlightNode = stageRef.current.findOne('#panel-highlight');
         const wasVisible = highlightNode ? highlightNode.visible() : false;
+        if (baseNode) baseNode.visible(false);
         if (highlightNode) highlightNode.visible(false);
 
         const r = maskImg.naturalWidth > 0 ? Math.min(600 / maskImg.naturalWidth, 600 / maskImg.naturalHeight) : 1;
         const exportRatio = r > 0 ? (1 / r) : 2;
-        const uri = stageRef.current.toDataURL({ pixelRatio: exportRatio });
-        setTextureDataUrl(uri);
+        const overlayCanvas = stageRef.current.toCanvas({ pixelRatio: exportRatio });
+        const exportWidth = Math.max(1, Math.round(stageRef.current.width() * exportRatio));
+        const exportHeight = Math.max(1, Math.round(stageRef.current.height() * exportRatio));
+        const tintedBaseCanvas = buildScaledCanvas(colorCanvasRef.current, exportWidth, exportHeight);
+        const pbrBaseCanvas = buildRepeatedTextureCanvas({
+            image: pbrTextures.baseColor?.image,
+            width: exportWidth,
+            height: exportHeight,
+            repeat: materialSettings.textureRepeat,
+        });
 
-        // Restore highlight
+        setTextureDataUrl(composeTextureDataUrl({
+            overlayCanvas,
+            tintedBaseCanvas,
+            pbrBaseCanvas,
+            width: exportWidth,
+            height: exportHeight,
+        }));
+
+        if (baseNode && wasBaseVisible) baseNode.visible(true);
         if (highlightNode && wasVisible) highlightNode.visible(true);
 
         if (selectedStickerId && trRef.current && stageRef.current) {
             const node = stageRef.current.findOne('#' + selectedStickerId);
             if (node) trRef.current.nodes([node]);
         }
-    }, [maskImg, selectedStickerId]);
+    }, [maskImg, materialSettings.textureRepeat, pbrTextures.baseColor, selectedStickerId]);
 
     const triggerExport = useDebounce(performExport, 200);
 
@@ -778,7 +1241,7 @@ const TestUVWorkflow = ({ initialGlbUrl, initialMaskUrl, initialProductData }) =
                                 onDragEnd={triggerExport}
                             >
                                 <Layer>
-                                    <KImage image={colorCanvasImg} width={maskImg.naturalWidth} height={maskImg.naturalHeight} listening={false} />
+                                    <KImage id="base-color-canvas" image={colorCanvasImg} width={maskImg.naturalWidth} height={maskImg.naturalHeight} listening={false} />
 
                                     {/* Panel selection highlight overlay */}
                                     {highlightImg && (
@@ -853,11 +1316,30 @@ const TestUVWorkflow = ({ initialGlbUrl, initialMaskUrl, initialProductData }) =
                             <directionalLight position={[5, 10, 5]} intensity={1} castShadow shadow-mapSize={[1024, 1024]} />
                             <hemisphereLight intensity={0.3} groundColor="#444" />
                             <React.Suspense fallback={null}>
-                                <Center><ModelViewer modelUrl={glbUrl} textureDataUrl={textureDataUrl} /></Center>
+                                <Center>
+                                    <ModelViewer
+                                        modelUrl={glbUrl}
+                                        textureDataUrl={textureDataUrl}
+                                        pbrTextures={pbrTextures}
+                                        materialSettings={materialSettings}
+                                    />
+                                </Center>
                                 <ContactShadows position={[0, -1.1, 0]} opacity={0.4} scale={10} blur={2} />
                             </React.Suspense>
                             <OrbitControls minDistance={2} maxDistance={8} enablePan={false} />
                         </Canvas>
+                    </div>
+                </div>
+                <div className="shrink-0 bg-white/80 backdrop-blur-2xl border border-white/60 shadow-[0_20px_50px_rgba(0,0,0,0.08)] rounded-3xl overflow-hidden">
+                    <div className="max-h-[320px] overflow-y-auto p-4">
+                        <PbrTextureUploader
+                            pbrTextures={pbrTextures}
+                            materialSettings={materialSettings}
+                            onUpload={handlePbrTextureUpload}
+                            onClear={handleClearPbrTexture}
+                            onClearAll={handleClearAllPbrTextures}
+                            onMaterialSettingChange={handleMaterialSettingChange}
+                        />
                     </div>
                 </div>
             </div>
