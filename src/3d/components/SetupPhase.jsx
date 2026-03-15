@@ -189,7 +189,7 @@ const SetupPhase = ({ glbUrl, meshList, meshConfig, globalMaterial, setGlbUrl, h
                                     </select>
                                 </div>
 
-                                
+
                             </div>
 
                             <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest pl-2 mb-2">Available Parts ({unplacedMeshes.length})</h3>

@@ -2,9 +2,8 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import * as THREE from "three";
 import api from "../../api/axios";
-import SetupPhase from "../../3d/components/SetupPhase";
-import DesignPhase from "../../3d/components/DesignPhase";
-import { optimizeImage } from "../../utils/imageOptimizer";
+import TestUVWorkflow from "../../3d/components/TestUVWorkflow";
+
 
 // Helper to construct full URL for static assets
 const getAssetUrl = (path) => {
@@ -23,13 +22,8 @@ const ProductEditor = () => {
 
     // -- Project Data --
     const [glbUrl, setGlbUrl] = useState(null);
-    const [meshList, setMeshList] = useState([]);
-    const [meshConfig, setMeshConfig] = useState({}); // { meshName: { maskUrl } }
-
-    // -- Editor State --
-    const [meshTextures, setMeshTextures] = useState({});
-    const [globalMaterial, setGlobalMaterial] = useState({ color: "#ffffff", roughness: 0.5, metalness: 0, wireframe: false });
-    const [activeStickerUrl, setActiveStickerUrl] = useState(null);
+    const [activeMaskUrl, setActiveMaskUrl] = useState(null);
+    const [productData, setProductData] = useState(null);
 
     useEffect(() => {
         const fetchProduct = async () => {
@@ -59,24 +53,18 @@ const ProductEditor = () => {
                     // 1. Set GLB URL
                     setGlbUrl(getAssetUrl(product.base_model_url));
 
-                    // 2. Set Mesh Config
-                    const config = {};
-                    if (product.meshes && Array.isArray(product.meshes)) {
-                        product.meshes.forEach(mesh => {
-                            config[mesh.meshName] = {
-                                maskUrl: getAssetUrl(mesh.whiteMaskPath),
-                                originalSvgPath: getAssetUrl(mesh.originalSvgPath)
-                                // We might need to handle 'isPlaced' logic in SetupPhase implicitly 
-                                // by checking if maskUrl exists.
-                            };
-                        });
+                    // 2. Set Active Mask URL (First mesh's original SVG)
+                    if (product.meshes && product.meshes.length > 0) {
+                        setActiveMaskUrl(getAssetUrl(product.meshes[0].originalSvgPath));
                     }
-                    setMeshConfig(config);
 
-                    // 3. Set other metadata if needed (store updates)
-                    // import useStore and setProductName maybe? 
-                    // But SetupPhase uses useStore internally for name/category. 
-                    // We should probably sync that.
+                    // 3. Set Product Data
+                    setProductData({
+                        name: product.name,
+                        category: product.category,
+                        subcategory: product.subcategory,
+                        isCloth: product.is_cloth === '1' || product.is_cloth === true
+                    });
                 }
             } catch (error) {
                 console.error("Failed to fetch product", error);
@@ -94,77 +82,7 @@ const ProductEditor = () => {
     // Sync with Store for Name/Category (optional, but good for UI consistency)
     // ... (Can add later if needed)
 
-    // -- Handlers (Copied/Adapted from UvMap.jsx) --
 
-    const handleGlb = (e) => {
-        // Allow replacing GLB if needed?
-        const file = e.target.files[0];
-        if (file) {
-            if (glbUrl) URL.revokeObjectURL(glbUrl);
-            setGlbUrl(URL.createObjectURL(file));
-            // Reset config if changing model completely?
-            // setMeshList([]);
-            // setMeshConfig({});
-        }
-    };
-
-    const handleMaskUpload = (meshName, e) => {
-        const file = e.target.files[0];
-        if (file) {
-            optimizeImage(file, 1024, 0.8)
-                .then(blob => {
-                    const optimizedUrl = URL.createObjectURL(blob);
-                    setMeshConfig(prev => ({
-                        ...prev,
-                        [meshName]: { ...prev[meshName], maskUrl: optimizedUrl }
-                    }));
-                })
-                .catch(err => {
-                    console.error("Optimization failed", err);
-                    setMeshConfig(prev => ({
-                        ...prev,
-                        [meshName]: { ...prev[meshName], maskUrl: URL.createObjectURL(file) }
-                    }));
-                });
-        }
-    };
-
-    const applyTexture = useCallback((meshName, dataUrl) => {
-        if (!dataUrl) {
-            setMeshTextures(prev => {
-                const next = { ...prev };
-                delete next[meshName];
-                return next;
-            });
-            return;
-        }
-
-        const img = new Image();
-        // If crossOrigin is needed for Canvas manipulation of remote images
-        img.crossOrigin = "anonymous";
-        img.src = dataUrl;
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = img.naturalWidth;
-            canvas.height = img.naturalHeight;
-            const ctx = canvas.getContext('2d');
-
-            // Fill White (for mask logic)
-            ctx.fillStyle = "#ffffff";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Draw Texture
-            ctx.drawImage(img, 0, 0);
-
-            const solidDataUrl = canvas.toDataURL();
-            const loader = new THREE.TextureLoader();
-            const tex = loader.load(solidDataUrl);
-            tex.colorSpace = THREE.SRGBColorSpace;
-            tex.flipY = false;
-
-            setMeshTextures(prev => ({ ...prev, [meshName]: tex }));
-        };
-    }, []);
 
     if (loading) {
         return (
@@ -175,30 +93,12 @@ const ProductEditor = () => {
     }
 
     return (
-        <div className="w-full h-screen bg-[#f8f9fc] text-zinc-900 font-sans overflow-hidden">
-            {phase === 'setup' ? (
-                <SetupPhase
-                    glbUrl={glbUrl}
-                    meshList={meshList}
-                    meshConfig={meshConfig}
-                    globalMaterial={globalMaterial}
-                    setGlbUrl={setGlbUrl}
-                    handleGlb={handleGlb}
-                    handleMaskUpload={handleMaskUpload}
-                    setMeshList={setMeshList}
-                    onLaunch={() => setPhase('design')}
-                />
-            ) : (
-                <DesignPhase
-                    glbUrl={glbUrl}
-                    meshConfig={meshConfig}
-                    meshTextures={meshTextures}
-                    globalMaterial={globalMaterial}
-                    activeStickerUrl={activeStickerUrl}
-                    setGlobalMaterial={setGlobalMaterial}
-                    setActiveStickerUrl={setActiveStickerUrl}
-                    onBack={() => setPhase('setup')}
-                    onUpdateTexture={applyTexture}
+        <div className="w-full h-[calc(100vh-64px)] bg-[#f8f9fc] text-zinc-900 font-sans overflow-hidden">
+            {productData && (
+                <TestUVWorkflow
+                    initialGlbUrl={glbUrl}
+                    initialMaskUrl={activeMaskUrl}
+                    initialProductData={productData}
                 />
             )}
         </div>

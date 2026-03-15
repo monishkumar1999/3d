@@ -96,6 +96,7 @@ const DesignPhase = ({ glbUrl, meshConfig, meshTextures, globalMaterial, activeS
             formData.append('product_details[name]', formDataPayload.name);
             formData.append('product_details[category]', formDataPayload.categoryId);
             formData.append('product_details[subcategory]', formDataPayload.subcategoryId);
+            formData.append('product_details[is_cloth]', formDataPayload.isCloth ? '1' : '0');
 
             // Update Store to reflect changes
             setProductName(formDataPayload.name);
@@ -447,6 +448,7 @@ const SaveProductModal = ({ isOpen, onClose, onConfirm, isSaving, initialName, i
     const [name, setName] = useState(initialName || "");
     const [categoryId, setCategoryId] = useState(initialCatId);
     const [subcategoryId, setSubcategoryId] = useState(initialSubcategoryId || "");
+    const [isCloth, setIsCloth] = useState(false);
     const [imagePreview, setImagePreview] = useState(snapshotUrl);
     const [imageFile, setImageFile] = useState(null);
 
@@ -457,6 +459,7 @@ const SaveProductModal = ({ isOpen, onClose, onConfirm, isSaving, initialName, i
             const derivedCatId = subCategories.find(s => s.id == initialSubcategoryId)?.categoryId || "";
             setCategoryId(derivedCatId);
             setSubcategoryId(initialSubcategoryId || "");
+            setIsCloth(false);
             setImagePreview(snapshotUrl);
             setImageFile(null);
         }
@@ -481,12 +484,13 @@ const SaveProductModal = ({ isOpen, onClose, onConfirm, isSaving, initialName, i
                 console.error("Failed to convert snapshot to blob", e);
             }
         }
-        
-        onConfirm({ 
-            name, 
-            categoryId, 
-            subcategoryId, 
-            imageBlob: blob 
+
+        onConfirm({
+            name,
+            categoryId,
+            subcategoryId,
+            isCloth,
+            imageBlob: blob
         });
     };
 
@@ -501,7 +505,7 @@ const SaveProductModal = ({ isOpen, onClose, onConfirm, isSaving, initialName, i
                         <X size={20} />
                     </button>
                 </div>
-                
+
                 <div className="p-6 overflow-y-auto space-y-5">
                     {/* Image Preview */}
                     <div className="space-y-2">
@@ -515,7 +519,7 @@ const SaveProductModal = ({ isOpen, onClose, onConfirm, isSaving, initialName, i
                                     <span className="text-xs mt-2">No Preview</span>
                                 </div>
                             )}
-                            
+
                             <label className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
                                 <div className="bg-white text-gray-800 px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 shadow-lg">
                                     <Camera size={16} />
@@ -529,8 +533,8 @@ const SaveProductModal = ({ isOpen, onClose, onConfirm, isSaving, initialName, i
                     {/* Name */}
                     <div className="space-y-1">
                         <label className="text-sm font-medium text-gray-700">Product Name</label>
-                        <input 
-                            type="text" 
+                        <input
+                            type="text"
                             className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
@@ -542,7 +546,7 @@ const SaveProductModal = ({ isOpen, onClose, onConfirm, isSaving, initialName, i
                         {/* Category */}
                         <div className="space-y-1">
                             <label className="text-sm font-medium text-gray-700">Category</label>
-                            <select 
+                            <select
                                 className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all bg-white"
                                 value={categoryId}
                                 onChange={(e) => {
@@ -560,7 +564,7 @@ const SaveProductModal = ({ isOpen, onClose, onConfirm, isSaving, initialName, i
                         {/* Subcategory */}
                         <div className="space-y-1">
                             <label className="text-sm font-medium text-gray-700">Subcategory</label>
-                            <select 
+                            <select
                                 className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all bg-white"
                                 value={subcategoryId}
                                 onChange={(e) => setSubcategoryId(e.target.value)}
@@ -573,17 +577,28 @@ const SaveProductModal = ({ isOpen, onClose, onConfirm, isSaving, initialName, i
                             </select>
                         </div>
                     </div>
+
+                    {/* Is Cloth Toggle */}
+                    <div className="flex items-center justify-between p-3 border border-gray-200 rounded-xl bg-gray-50">
+                        <span className="text-sm font-medium text-gray-700">Is this a Cloth?</span>
+                        <button
+                            onClick={() => setIsCloth(!isCloth)}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${isCloth ? 'bg-indigo-600' : 'bg-gray-200'}`}
+                        >
+                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isCloth ? 'translate-x-6' : 'translate-x-1'}`} />
+                        </button>
+                    </div>
                 </div>
 
                 <div className="p-5 border-t border-gray-100 bg-gray-50/50 flex gap-3 justify-end">
-                    <button 
+                    <button
                         onClick={onClose}
                         disabled={isSaving}
                         className="px-5 py-2.5 rounded-xl font-semibold text-gray-600 hover:bg-gray-200 transition-colors"
                     >
                         Cancel
                     </button>
-                    <button 
+                    <button
                         onClick={handleSave}
                         disabled={isSaving || !name || !categoryId || !subcategoryId}
                         className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
