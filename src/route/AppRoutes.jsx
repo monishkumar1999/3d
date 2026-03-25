@@ -8,6 +8,7 @@ import SubCategoryManager from "../components/admin/SubCategoryManager";
 import ProductList from "../components/products/ProductList";
 import ProductEditor from "../components/products/ProductEditor";
 import TestUVWorkflow from "../3d/components/TestUVWorkflow";
+import MainTestComponent from "../3d/components/mainTestCOmponent";
 
 
 // ----------------------------------
@@ -26,6 +27,7 @@ const AppRoutes = () => {
       <Route element={<ProtectedRoutesWithLayout />}>
         {/* Redirect root path to catalog for logged-in users */}
         <Route path="/test-uv" element={<TestUVWorkflow />} />
+        <Route path="/mainTest" element={<MainTestComponent />} />
 
         <Route path="/categories" element={<CategoryManager />} />
         <Route path="/subcategories" element={<SubCategoryManager />} />

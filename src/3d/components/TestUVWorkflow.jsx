@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Center, ContactShadows } from '@react-three/drei';
 import { Stage, Layer, Image as KImage, Transformer, Rect, Group } from 'react-konva';
@@ -504,32 +504,44 @@ const useDebounce = (callback, delay) => {
 
 const PbrTextureUploader = ({ pbrTextures, materialSettings, onUpload, onClear, onClearAll, onMaterialSettingChange }) => {
     const hasAnyPbrMaps = PBR_MAP_SLOTS.some(({ key }) => Boolean(pbrTextures[key]));
+    const uploadedCount = PBR_MAP_SLOTS.filter(({ key }) => Boolean(pbrTextures[key])).length;
 
     return (
         <div className="space-y-4">
-            <div className="flex items-start justify-between gap-3">
-                <div className="space-y-1">
-                    <p className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider">PBR Maps</p>
-                    <p className="text-[11px] leading-5 text-zinc-500">Upload your PBR PNG maps and they will apply live on the 3D model.</p>
+            {/* Header */}
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-cyan-500 text-white shadow-sm">
+                        <Palette size={14} />
+                    </div>
+                    <div>
+                        <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Materials</p>
+                        <h3 className="text-sm font-bold text-slate-900">PBR Maps</h3>
+                    </div>
                 </div>
-                {hasAnyPbrMaps && (
-                    <button
-                        type="button"
-                        onClick={onClearAll}
-                        className="shrink-0 text-[10px] font-semibold text-red-500 hover:text-red-600 transition-colors"
-                    >
-                        Clear all
-                    </button>
-                )}
+                <div className="flex items-center gap-2">
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                        {uploadedCount}/{PBR_MAP_SLOTS.length}
+                    </span>
+                    {hasAnyPbrMaps && (
+                        <button type="button" onClick={onClearAll} className="text-[11px] font-semibold text-red-400 hover:text-red-600 transition-colors">
+                            Clear all
+                        </button>
+                    )}
+                </div>
             </div>
 
+            {/* PBR Slot Grid */}
             <div className="grid grid-cols-2 gap-2">
                 {PBR_MAP_SLOTS.map(({ key, label, hint }) => {
                     const currentFile = pbrTextures[key];
                     return (
                         <label
                             key={key}
-                            className="group cursor-pointer rounded-2xl border border-zinc-200 bg-zinc-50/80 hover:bg-white hover:border-zinc-300 transition-all"
+                            className={`group cursor-pointer rounded-xl border p-2.5 transition-all duration-150 ${currentFile
+                                ? 'border-emerald-200 bg-emerald-50'
+                                : 'border-slate-200 bg-slate-50 hover:border-indigo-200 hover:bg-white'
+                            }`}
                         >
                             <input
                                 type="file"
@@ -537,67 +549,64 @@ const PbrTextureUploader = ({ pbrTextures, materialSettings, onUpload, onClear, 
                                 onChange={(e) => onUpload(key, e)}
                                 className="hidden"
                             />
-                            <div className="p-3 space-y-2">
-                                <div className="flex items-center justify-between gap-2">
-                                    <span className="text-[11px] font-semibold text-zinc-700 uppercase tracking-wide">{label}</span>
-                                    {currentFile ? (
-                                        <button
-                                            type="button"
-                                            onClick={(e) => {
-                                                e.preventDefault();
-                                                e.stopPropagation();
-                                                onClear(key);
-                                            }}
-                                            className="w-6 h-6 rounded-full bg-white border border-zinc-200 flex items-center justify-center text-zinc-400 hover:text-red-500 hover:border-red-200 transition-colors"
-                                        >
-                                            <X size={12} />
-                                        </button>
-                                    ) : (
-                                        <span className="w-6 h-6 rounded-full bg-white border border-zinc-200 flex items-center justify-center text-zinc-400 group-hover:text-indigo-500 group-hover:border-indigo-200 transition-colors">
-                                            <Upload size={12} />
-                                        </span>
-                                    )}
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                    <span className={`h-2 w-2 rounded-full ${currentFile ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                                    <span className="text-[11px] font-bold uppercase tracking-wide text-slate-700">{label}</span>
                                 </div>
-                                <p className="text-[10px] text-zinc-400 uppercase tracking-wide">{hint}</p>
-                                <p className="text-[11px] font-medium text-zinc-500 truncate">
-                                    {currentFile?.name || 'Click to upload'}
-                                </p>
+                                {currentFile ? (
+                                    <button
+                                        type="button"
+                                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClear(key); }}
+                                        className="flex h-5 w-5 items-center justify-center rounded-full bg-white text-slate-400 hover:text-red-500 border border-slate-200 transition-colors"
+                                    >
+                                        <X size={10} />
+                                    </button>
+                                ) : (
+                                    <span className="flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 group-hover:border-indigo-200 group-hover:text-indigo-500">
+                                        <Upload size={10} />
+                                    </span>
+                                )}
                             </div>
+                            <p className="mt-1 truncate text-[10px] text-slate-400">{currentFile ? currentFile.name : hint}</p>
                         </label>
                     );
                 })}
             </div>
 
-            <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                    <span className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider">Texture Repeat</span>
-                    <span className="text-[10px] font-semibold text-zinc-500">{formatTextureRepeat(materialSettings.textureRepeat)}x</span>
+            {/* Sliders */}
+            <div className="space-y-3 border-t border-slate-100 pt-3">
+                <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-600">Texture Repeat</p>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">{formatTextureRepeat(materialSettings.textureRepeat)}x</span>
+                    </div>
+                    <input
+                        type="range"
+                        min={MIN_TEXTURE_REPEAT}
+                        max={MAX_TEXTURE_REPEAT}
+                        step="0.25"
+                        value={materialSettings.textureRepeat}
+                        onChange={(e) => onMaterialSettingChange('textureRepeat', parseFloat(e.target.value))}
+                        className="w-full h-1.5 rounded-full bg-slate-200 appearance-none accent-indigo-500"
+                    />
                 </div>
-                <input
-                    type="range"
-                    min={MIN_TEXTURE_REPEAT}
-                    max={MAX_TEXTURE_REPEAT}
-                    step="0.25"
-                    value={materialSettings.textureRepeat}
-                    onChange={(e) => onMaterialSettingChange('textureRepeat', parseFloat(e.target.value))}
-                    className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none accent-indigo-500"
-                />
-            </div>
 
-            <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                    <span className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider">Normal Strength</span>
-                    <span className="text-[10px] font-semibold text-zinc-500">{(materialSettings.normalIntensity ?? 1).toFixed(1)}x</span>
+                <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-600">Normal Strength</p>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">{(materialSettings.normalIntensity ?? 1).toFixed(1)}x</span>
+                    </div>
+                    <input
+                        type="range"
+                        min="0"
+                        max="2"
+                        step="0.1"
+                        value={materialSettings.normalIntensity ?? 1}
+                        onChange={(e) => onMaterialSettingChange('normalIntensity', parseFloat(e.target.value))}
+                        className="w-full h-1.5 rounded-full bg-slate-200 appearance-none accent-indigo-500"
+                    />
                 </div>
-                <input
-                    type="range"
-                    min="0"
-                    max="2"
-                    step="0.1"
-                    value={materialSettings.normalIntensity ?? 1}
-                    onChange={(e) => onMaterialSettingChange('normalIntensity', parseFloat(e.target.value))}
-                    className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none accent-indigo-500"
-                />
             </div>
         </div>
     );
@@ -1201,89 +1210,131 @@ const TestUVWorkflow = ({ initialGlbUrl, initialMaskUrl, initialProductData }) =
     const ratio = maskImg ? Math.min(maxSize / maskImg.naturalWidth, maxSize / maskImg.naturalHeight) : 1;
     const stageW = maskImg ? maskImg.naturalWidth * ratio : maxSize;
     const stageH = maskImg ? maskImg.naturalHeight * ratio : maxSize;
+    const uploadedPbrCount = PBR_MAP_SLOTS.filter(({ key }) => Boolean(pbrTextures[key])).length;
+    const hasWorkspaceAssets = Boolean(maskImg && colorCanvasImg);
+    const modelLabel = glbFileName || 'Upload GLB';
 
     return (
-        <div ref={containerRef} className="flex w-full relative bg-[#f0f2f5] overflow-hidden" style={{ height: 'calc(100vh - 150px)' }}>
+        <div
+            ref={containerRef}
+            className="relative grid w-full gap-4 overflow-hidden p-4"
+            style={{ height: 'calc(100vh - 80px)', gridTemplateColumns: 'minmax(0,1fr) 400px', background: 'linear-gradient(135deg, #f0f4ff 0%, #f8fafc 50%, #f0f2f8 100%)' }}
+        >
+            {/* ═══ LEFT: 2D WORKSPACE ═══ */}
+            <div className="min-w-0 flex flex-col gap-3 overflow-hidden">
 
-            {/* ═══ CENTER: 2D WORKSPACE ═══ */}
-            <div className="flex-1 relative overflow-hidden">
+                {/* Compact Toolbar */}
+                <div className="shrink-0 flex items-center gap-3 rounded-2xl border border-white/90 bg-white/80 px-4 py-3 shadow-[0_4px_20px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+                    <div className="flex-1 min-w-0">
+                        <h2 className="text-base font-bold tracking-tight text-slate-900">UV Design Editor</h2>
+                        <div className="flex items-center gap-2 mt-0.5">
+                            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${hasWorkspaceAssets ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${hasWorkspaceAssets ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+                                {hasWorkspaceAssets ? 'Live' : 'Idle'}
+                            </span>
+                            <span className="text-[11px] text-slate-400">{stickers.length} layer{stickers.length !== 1 ? 's' : ''} · {uploadedPbrCount} PBR</span>
+                        </div>
+                    </div>
 
-                {/* Top Upload Bar */}
-                <div className="absolute top-4 left-4 z-20 flex gap-3">
-                    <label className="flex items-center gap-2 px-4 py-2.5 bg-white rounded-xl shadow-sm border border-zinc-200 cursor-pointer hover:shadow-md transition-all text-sm font-semibold text-zinc-700">
-                        <Upload size={16} className="text-blue-500" />
-                        {glbFileName || 'Upload GLB'}
-                        <input type="file" accept=".glb,.gltf" onChange={handleGlbUpload} className="hidden" />
-                    </label>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <label className={`group flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition-all hover:-translate-y-0.5 ${glbUrl ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-indigo-200 hover:text-indigo-600'}`}>
+                            <Upload size={14} />
+                            <span>{glbUrl ? 'Model ✓' : '3D Model'}</span>
+                            <input type="file" accept=".glb,.gltf" onChange={handleGlbUpload} className="hidden" />
+                        </label>
 
-                    <label className="flex items-center gap-2 px-4 py-2.5 bg-white rounded-xl shadow-sm border border-zinc-200 cursor-pointer hover:shadow-md transition-all text-sm font-semibold text-zinc-700">
-                        <ImageIcon size={16} className="text-green-500" />
-                        {maskImg ? 'Change UV Map' : 'Upload UV Map'}
-                        <input type="file" accept=".svg,.png,.jpg,.jpeg" onChange={handleMaskUpload} className="hidden" />
-                    </label>
+                        <label className={`group flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition-all hover:-translate-y-0.5 ${maskImg ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-emerald-200 hover:text-emerald-600'}`}>
+                            <ImageIcon size={14} />
+                            <span>{maskImg ? 'UV ✓' : 'UV Map'}</span>
+                            <input type="file" accept=".svg,.png,.jpg,.jpeg" onChange={handleMaskUpload} className="hidden" />
+                        </label>
 
-                    <label className="flex items-center gap-2 px-4 py-2.5 bg-white rounded-xl shadow-sm border border-zinc-200 cursor-pointer hover:shadow-md transition-all text-sm font-semibold text-zinc-700">
-                        <Palette size={16} className="text-purple-500" />
-                        Add Image
-                        <input type="file" accept="image/*" onChange={handleStickerUpload} className="hidden" />
-                    </label>
+                        <label className="group flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-600 transition-all hover:-translate-y-0.5 hover:border-fuchsia-200 hover:text-fuchsia-600">
+                            <Palette size={14} />
+                            <span>Artwork</span>
+                            <input type="file" accept="image/*" onChange={handleStickerUpload} className="hidden" />
+                        </label>
+                    </div>
                 </div>
 
-                {/* Konva Canvas */}
-                <div className="w-full h-full overflow-auto bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] bg-[length:32px_32px] flex items-center justify-center p-12 pr-[420px]">
-                    {maskImg && colorCanvasImg ? (
-                        <div className="rounded-lg overflow-hidden shadow-lg bg-gray-800" style={{ width: stageW, height: stageH }}>
-                            <Stage
-                                width={stageW} height={stageH} scaleX={ratio} scaleY={ratio}
-                                ref={stageRef}
-                                onClick={handleStageClick}
-                                onMouseUp={triggerExport}
-                                onDragEnd={triggerExport}
-                            >
-                                <Layer>
-                                    <KImage id="base-color-canvas" image={colorCanvasImg} width={maskImg.naturalWidth} height={maskImg.naturalHeight} listening={false} />
+                {/* Canvas Area */}
+                <div className="min-h-0 flex-1 overflow-auto rounded-2xl border border-white/80 bg-white/50 shadow-[0_4px_24px_rgba(15,23,42,0.07)] backdrop-blur-sm">
+                    <div className="flex min-h-full items-center justify-center p-6 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] bg-[length:28px_28px] rounded-2xl">
+                        {maskImg && colorCanvasImg ? (
+                            <div className="rounded-3xl border border-slate-700/80 bg-slate-950 p-4 shadow-[0_24px_60px_rgba(15,23,42,0.40)]">
+                                <div className="mb-3 flex items-center justify-between">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">UV Canvas</span>
+                                    <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[10px] font-semibold text-slate-400">
+                                        {stickers.length} layer{stickers.length !== 1 ? 's' : ''}
+                                    </span>
+                                </div>
 
-                                    {/* Panel selection highlight overlay */}
-                                    {highlightImg && (
-                                        <KImage
-                                            id="panel-highlight"
-                                            image={highlightImg}
-                                            width={maskImg.naturalWidth}
-                                            height={maskImg.naturalHeight}
-                                            listening={false}
-                                            opacity={1}
-                                        />
-                                    )}
+                                <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-900" style={{ width: stageW, height: stageH }}>
+                                    <Stage
+                                        width={stageW} height={stageH} scaleX={ratio} scaleY={ratio}
+                                        ref={stageRef}
+                                        onClick={handleStageClick}
+                                        onMouseUp={triggerExport}
+                                        onDragEnd={triggerExport}
+                                    >
+                                        <Layer>
+                                            <KImage id="base-color-canvas" image={colorCanvasImg} width={maskImg.naturalWidth} height={maskImg.naturalHeight} listening={false} />
 
-                                    {stickers.map((s, i) => (
-                                        <KImage
-                                            key={s.id} id={s.id} image={s.image}
-                                            x={s.x} y={s.y} width={s.width} height={s.height} rotation={s.rotation} draggable
-                                            onClick={(e) => { e.cancelBubble = true; setSelectedStickerId(s.id); setPopup(null); setHighlightImg(null); }}
-                                            onTransformEnd={(e) => {
-                                                const node = e.target;
-                                                const updated = [...stickers];
-                                                updated[i] = { ...updated[i], x: node.x(), y: node.y(), width: Math.max(5, node.width() * node.scaleX()), height: Math.max(5, node.height() * node.scaleY()), rotation: node.rotation() };
-                                                node.scaleX(1); node.scaleY(1);
-                                                setStickers(updated);
-                                                triggerExport();
-                                            }}
-                                        />
+                                            {highlightImg && (
+                                                <KImage
+                                                    id="panel-highlight"
+                                                    image={highlightImg}
+                                                    width={maskImg.naturalWidth}
+                                                    height={maskImg.naturalHeight}
+                                                    listening={false}
+                                                    opacity={1}
+                                                />
+                                            )}
+
+                                            {stickers.map((s, i) => (
+                                                <KImage
+                                                    key={s.id} id={s.id} image={s.image}
+                                                    x={s.x} y={s.y} width={s.width} height={s.height} rotation={s.rotation} draggable
+                                                    onClick={(e) => { e.cancelBubble = true; setSelectedStickerId(s.id); setPopup(null); setHighlightImg(null); }}
+                                                    onTransformEnd={(e) => {
+                                                        const node = e.target;
+                                                        const updated = [...stickers];
+                                                        updated[i] = { ...updated[i], x: node.x(), y: node.y(), width: Math.max(5, node.width() * node.scaleX()), height: Math.max(5, node.height() * node.scaleY()), rotation: node.rotation() };
+                                                        node.scaleX(1); node.scaleY(1);
+                                                        setStickers(updated);
+                                                        triggerExport();
+                                                    }}
+                                                />
+                                            ))}
+
+                                            <Transformer ref={trRef} borderStroke="#4f46e5" anchorStroke="#4f46e5" anchorFill="#ffffff" anchorSize={8} borderDash={[2, 2]} />
+                                        </Layer>
+                                    </Stage>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="mx-auto flex max-w-sm flex-col items-center gap-4 rounded-3xl border border-dashed border-slate-300 bg-white/70 px-10 py-12 text-center shadow-[0_8px_32px_rgba(15,23,42,0.07)]">
+                                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-900 to-indigo-700 text-white shadow-lg shadow-indigo-600/30">
+                                    <ImageIcon size={28} strokeWidth={1.8} />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-semibold tracking-tight text-slate-900">Upload a UV map</h3>
+                                    <p className="mt-1 text-sm text-slate-500">Load a UV layout to unlock the canvas and start painting panels.</p>
+                                </div>
+                                <div className="flex flex-col gap-1.5 w-full text-left">
+                                    {[{ n: '1', t: 'Upload a GLB model' }, { n: '2', t: 'Load your UV map' }, { n: '3', t: 'Paint & add artwork' }].map(({ n, t }) => (
+                                        <div key={n} className="flex items-center gap-2.5 rounded-xl bg-slate-50 px-3 py-2">
+                                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[10px] font-black text-indigo-600">{n}</span>
+                                            <span className="text-xs font-medium text-slate-600">{t}</span>
+                                        </div>
                                     ))}
-
-                                    <Transformer ref={trRef} borderStroke="#4f46e5" anchorStroke="#4f46e5" anchorFill="#ffffff" anchorSize={8} borderDash={[2, 2]} />
-                                </Layer>
-                            </Stage>
-                        </div>
-                    ) : (
-                        <div className="flex flex-col items-center gap-4 text-zinc-400">
-                            <ImageIcon size={64} strokeWidth={1} />
-                            <p className="text-lg font-light">Upload a UV map to start editing</p>
-                        </div>
-                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
-                {/* ── Face Color Popup (positioned over 2D workspace) ── */}
+                {/* Face Color Popup */}
                 {popup && (
                     <FaceColorPopup
                         position={{ x: popup.screenX, y: popup.screenY }}
@@ -1294,23 +1345,34 @@ const TestUVWorkflow = ({ initialGlbUrl, initialMaskUrl, initialProductData }) =
                 )}
             </div>
 
-            {/* ═══ RIGHT: 3D PREVIEW ═══ */}
-            <div className="absolute top-4 right-4 bottom-4 w-[380px] flex flex-col gap-4 z-30">
-                <div className="flex-1 bg-white/80 backdrop-blur-2xl border border-white/60 shadow-[0_20px_50px_rgba(0,0,0,0.1)] rounded-3xl overflow-hidden flex flex-col relative min-h-0">
-                    <div className="absolute top-4 left-4 z-10 flex gap-2">
-                        <span className="bg-white/80 backdrop-blur-xl px-3 py-1 rounded-lg text-[10px] font-black tracking-widest text-zinc-900 border border-white/50 shadow-sm uppercase">3D Preview</span>
+            {/* ═══ RIGHT: 3D PREVIEW + PBR ═══ */}
+            <div className="min-h-0 flex flex-col gap-3 overflow-hidden">
+
+                {/* 3D Preview Card */}
+                <div className="flex flex-col overflow-hidden rounded-2xl border border-white/80 bg-white shadow-[0_8px_32px_rgba(15,23,42,0.10)]">
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+                        <div className="flex items-center gap-2.5">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-violet-500 text-white shadow-sm shadow-indigo-500/30">
+                                <Camera size={14} />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-bold text-slate-900">3D Preview</h3>
+                                <p className="text-[10px] text-slate-400">{hasWorkspaceAssets ? 'Synced from canvas' : 'Ready for setup'}</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${hasWorkspaceAssets ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
+                                {hasWorkspaceAssets ? '● Live' : '○ Idle'}
+                            </span>
+                            {uploadedPbrCount > 0 && (
+                                <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-600">{uploadedPbrCount} PBR</span>
+                            )}
+                        </div>
                     </div>
-                    {/* Save Button */}
-                    <div className="absolute bottom-6 left-0 right-0 z-20 flex justify-center px-6 pointer-events-none">
-                        <button
-                            onClick={handleSaveClick}
-                            className="pointer-events-auto flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full font-bold shadow-xl shadow-indigo-600/30 transition-all hover:scale-105 active:scale-95"
-                        >
-                            <Save size={18} />
-                            Save Product
-                        </button>
-                    </div>
-                    <div className="flex-1 bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 min-h-0">
+
+                    {/* Canvas */}
+                    <div className="h-[300px] min-h-[300px] bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950">
                         <Canvas shadows camera={{ position: [0, 0, 4.5], fov: 45 }} gl={{ preserveDrawingBuffer: true, antialias: true, toneMapping: 3, toneMappingExposure: 1 }} dpr={[1, 1.5]}>
                             <ambientLight intensity={0.5} />
                             <directionalLight position={[5, 10, 5]} intensity={1} castShadow shadow-mapSize={[1024, 1024]} />
@@ -1329,9 +1391,22 @@ const TestUVWorkflow = ({ initialGlbUrl, initialMaskUrl, initialProductData }) =
                             <OrbitControls minDistance={2} maxDistance={8} enablePan={false} />
                         </Canvas>
                     </div>
+
+                    {/* Save Button */}
+                    <div className="border-t border-slate-100 bg-white p-3">
+                        <button
+                            onClick={handleSaveClick}
+                            className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(99,102,241,0.30)] transition-all hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(99,102,241,0.40)] active:translate-y-0"
+                        >
+                            <Save size={15} />
+                            Save Product
+                        </button>
+                    </div>
                 </div>
-                <div className="shrink-0 bg-white/80 backdrop-blur-2xl border border-white/60 shadow-[0_20px_50px_rgba(0,0,0,0.08)] rounded-3xl overflow-hidden">
-                    <div className="max-h-[320px] overflow-y-auto p-4">
+
+                {/* PBR Panel */}
+                <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-white/80 bg-white shadow-[0_8px_32px_rgba(15,23,42,0.08)]">
+                    <div className="h-full overflow-y-auto p-4">
                         <PbrTextureUploader
                             pbrTextures={pbrTextures}
                             materialSettings={materialSettings}
@@ -1343,6 +1418,7 @@ const TestUVWorkflow = ({ initialGlbUrl, initialMaskUrl, initialProductData }) =
                     </div>
                 </div>
             </div>
+
             {isSaveModalOpen && (
                 <SaveProductModal
                     isOpen={isSaveModalOpen}
