@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Environment, OrbitControls, Center, ContactShadows } from "@react-three/drei";
-import { Type, Palette, Upload, Download, Image as ImageIcon, ChevronLeft, X, Save, Camera } from "lucide-react";
+import { Type, Palette, Upload, Download, Image as ImageIcon, ChevronLeft, X, Save, Camera, Eye, EyeOff } from "lucide-react";
 import { useStore } from "../../store/useStore";
 
 import DynamicModel from "./DynamicModel";
@@ -40,9 +40,9 @@ const Loader = () => {
 };
 
 const DesignPhase = ({ glbUrl, meshConfig, meshTextures, globalMaterial, activeStickerUrl, setGlobalMaterial, setActiveStickerUrl, onBack, onUpdateTexture }) => {
-    const [sidebarOpen, setSidebarOpen] = useState(false); // Closed by default for "removed" feel
-    const [selectedMesh, setSelectedMesh] = useState(null); // Highlighting Logic
-    const [meshColors, setMeshColors] = useState({}); // Per-mesh coloring
+    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [selectedMesh, setSelectedMesh] = useState(null);
+    const [meshColors, setMeshColors] = useState({});
 
     // Store
     const { materialSettings, setMaterialSetting, saveMaterialConfiguration, productName, subcategory, setProductName, setSubcategory } = useStore();
@@ -328,6 +328,7 @@ const DesignPhase = ({ glbUrl, meshConfig, meshTextures, globalMaterial, activeS
                                 maskUrl={cfg.maskUrl}
                                 stickerUrl={activeStickerUrl}
                                 onUpdateTexture={onUpdateTexture}
+                                onStickerAdded={() => setActiveStickerUrl(null)}
                                 bgColor={meshColors[meshName] || globalMaterial.color || "#ffffff"}
                                 isSelected={selectedMesh === meshName}
                                 onClick={() => setSelectedMesh(meshName)}

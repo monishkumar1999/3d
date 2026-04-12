@@ -3,7 +3,7 @@ import { useGLTF, Center } from "@react-three/drei";
 import { useStore } from "../../store/useStore";
 import * as THREE from "three";
 
-const DynamicModel = React.memo(({ url, meshTextures, materialProps, setMeshList, onMeshLoaded }) => {
+const DynamicModel = React.memo(({ url, meshTextures, materialProps, showOriginal = false, setMeshList, onMeshLoaded }) => {
     const { scene } = useGLTF(url);
     const clonedScene = useMemo(() => scene.clone(), [scene]);
 
@@ -13,6 +13,7 @@ const DynamicModel = React.memo(({ url, meshTextures, materialProps, setMeshList
         clonedScene.traverse((child) => {
             if (child.isMesh) {
                 meshes.push(child.name);
+                // Store original material for Show Original toggle
                 if (!child.userData.originalMat) child.userData.originalMat = child.material.clone();
             }
         });
@@ -20,87 +21,78 @@ const DynamicModel = React.memo(({ url, meshTextures, materialProps, setMeshList
         if (onMeshLoaded) onMeshLoaded(clonedScene);
     }, [clonedScene, setMeshList, onMeshLoaded]);
 
-    // Texture & Material Updates
+    // ----- OVERLAY MESH MANAGEMENT -----
+    // For each mesh with a sticker texture, we keep the ORIGINAL material untouched
+    // and add a transparent child mesh that renders only the sticker on top.
     const materialSettings = useStore(state => state.materialSettings);
 
     useEffect(() => {
         clonedScene.traverse((child) => {
-            if (child.isMesh) {
-                // 1. Handle Texture Map
-                if (meshTextures[child.name]) {
-                    const newMap = meshTextures[child.name];
+            if (!child.isMesh) return;
 
-                    // Only clone/replace material if the MAP actually changes significantly
-                    // or if we haven't set up our custom material yet.
-                    // However, to be safe and responsive, we can just update the map on the existing material
-                    // if it's already a clone, or clone it once.
+            // 1. Always restore original material (so base texture never changes)
+            if (child.userData.originalMat && !showOriginal) {
+                // Restore to original if we placed an overlay on it previously
+                child.material = child.userData.originalMat.clone();
+                child.userData.isCloned = true;
+            }
 
-                    // Simplified: Ensure we are working on a clone
-                    if (!child.userData.isCloned) {
-                        child.material = child.userData.originalMat ? child.userData.originalMat.clone() : child.material.clone();
-                        child.userData.isCloned = true;
-                    }
+            // ShowOriginal mode: strict restore, no overlays
+            if (showOriginal) {
+                if (child.userData.originalMat) {
+                    child.material = child.userData.originalMat.clone();
+                    child.userData.isCloned = false;
+                }
+                // Remove any overlay child
+                const oldOverlay = child.getObjectByName(`__overlay__${child.name}`);
+                if (oldOverlay) child.remove(oldOverlay);
+                return;
+            }
 
-                    // Update Map if different
-                    if (child.material.map?.uuid !== newMap.uuid) {
-                        child.material.map = newMap;
-                        child.material.map.flipY = false;
-                        child.material.map.colorSpace = THREE.SRGBColorSpace;
-                        child.material.map.minFilter = THREE.LinearMipMapLinearFilter;
-                        child.material.map.magFilter = THREE.LinearFilter;
-                        child.material.map.anisotropy = 16;
-                        child.material.map.generateMipmaps = true;
-                        child.material.needsUpdate = true;
-                    }
+            // 2. Apply admin material settings to the BASE mesh (roughness, metalness etc.)
+            const mat = child.material;
+            mat.side = THREE.DoubleSide;
+            mat.roughness = materialSettings.roughness;
+            mat.metalness = materialSettings.metalness;
+            mat.sheen = materialSettings.sheen;
+            mat.sheenRoughness = materialSettings.sheenRoughness;
+            mat.flatShading = false;
+            mat.clearcoat = 0;
+            if (materialProps.color) mat.color.set(materialProps.color);
+            mat.needsUpdate = true;
+
+            // 3. Sticker Overlay
+            const stickerTex = meshTextures[child.name];
+            const existingOverlay = child.getObjectByName(`__overlay__${child.name}`);
+
+            if (stickerTex) {
+                if (existingOverlay) {
+                    // Update texture on existing overlay
+                    existingOverlay.material.map = stickerTex;
+                    existingOverlay.material.needsUpdate = true;
                 } else {
-                    // No texture? Revert to original? 
-                    // For now, keep as is or ensure specific behavior.
-                    if (child.userData.originalMat && child.userData.isCloned) {
-                        // Optional: Revert to original if that's the desired flow, 
-                        // but usually we just clear the map.
-                        child.material.map = null;
-                        child.material.needsUpdate = true;
-                    }
+                    // Create a new transparent overlay mesh using the same geometry
+                    const overlayMat = new THREE.MeshBasicMaterial({
+                        map: stickerTex,
+                        transparent: true,
+                        depthWrite: false,
+                        blending: THREE.NormalBlending,
+                        polygonOffset: true,
+                        polygonOffsetFactor: -1,
+                        polygonOffsetUnits: -1,
+                        side: THREE.DoubleSide,
+                    });
+                    const overlayMesh = new THREE.Mesh(child.geometry, overlayMat);
+                    overlayMesh.name = `__overlay__${child.name}`;
+                    overlayMesh.renderOrder = 1;
+                    child.add(overlayMesh);
                 }
-
-                // 2. Upgrade to MeshPhysicalMaterial if needed (for Sheen support)
-                if (child.material.type !== "MeshPhysicalMaterial") {
-                    const newMat = new THREE.MeshPhysicalMaterial();
-                    try {
-                        newMat.copy(child.material);
-                    } catch (e) {
-                        // Fallback for materials that don't support full copy (e.g. MeshBasicMaterial missing normalScale)
-                        if (child.material.color) newMat.color.copy(child.material.color);
-                        if (child.material.map) newMat.map = child.material.map;
-                        newMat.name = child.material.name;
-                        newMat.transparent = child.material.transparent;
-                        newMat.opacity = child.material.opacity;
-                        newMat.side = child.material.side || THREE.DoubleSide;
-                        newMat.userData = { ...child.material.userData };
-                    }
-                    child.material = newMat;
-                    child.userData.isCloned = true;
-                }
-
-                // 3. Always Apply Material Properties (Admin Config)
-                const mat = child.material;
-                mat.side = THREE.DoubleSide;
-
-                // Dynamic Admin Controls
-                mat.roughness = materialSettings.roughness;
-                mat.metalness = materialSettings.metalness;
-                mat.sheen = materialSettings.sheen;
-                mat.sheenRoughness = materialSettings.sheenRoughness;
-
-                mat.flatShading = false;
-                mat.clearcoat = 0; // Keeping clearcoat off for now as requested
-
-                if (materialProps.color) mat.color.set(materialProps.color);
-
-                mat.needsUpdate = true;
+            } else {
+                // No sticker — remove overlay if it exists
+                if (existingOverlay) child.remove(existingOverlay);
             }
         });
-    }, [clonedScene, meshTextures, materialProps, materialSettings]);
+    }, [clonedScene, meshTextures, materialProps, materialSettings, showOriginal]);
 
     return (
         <Center>

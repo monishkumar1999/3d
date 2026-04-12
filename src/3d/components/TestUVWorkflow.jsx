@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Center, ContactShadows } from '@react-three/drei';
 import { Stage, Layer, Image as KImage, Transformer, Rect, Group } from 'react-konva';
@@ -541,7 +541,7 @@ const PbrTextureUploader = ({ pbrTextures, materialSettings, onUpload, onClear, 
                             className={`group cursor-pointer rounded-xl border p-2.5 transition-all duration-150 ${currentFile
                                 ? 'border-emerald-200 bg-emerald-50'
                                 : 'border-slate-200 bg-slate-50 hover:border-indigo-200 hover:bg-white'
-                            }`}
+                                }`}
                         >
                             <input
                                 type="file"

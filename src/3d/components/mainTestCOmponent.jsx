@@ -858,7 +858,7 @@ const ModelViewer = React.memo(React.forwardRef(({ modelUrl, textureDataUrl, fla
             mats.forEach(m => { if (m?.name && !allMatNames.includes(m.name)) allMatNames.push(m.name); });
         });
         const isMultiMaterial = allMatNames.length > 1;
-        
+
         // Names of materials that should receive the painted canvas texture.
         const CANVAS_MAT_KEYWORDS = ['canvas', 'canva', 'inner', 'photo', 'editable', 'frame_inner', 'picture', 'artwork', 'image'];
         const isCanvasMaterial = (matName) => {
@@ -2297,8 +2297,8 @@ const TestUVWorkflow = ({ productId, designId: initialDesignId, initialGlbUrl, i
     const handleStickerTransformEnd = useCallback((id, e) => {
         const node = e.target;
         setStickers(prev => prev.map(s => s.id === id ? {
-            ...s, 
-            x: node.x(), 
+            ...s,
+            x: node.x(),
             y: node.y(),
             scaleX: node.scaleX(),
             scaleY: node.scaleY(),

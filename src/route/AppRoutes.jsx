@@ -9,7 +9,8 @@ import ProductList from "../components/products/ProductList";
 import ProductEditor from "../components/products/ProductEditor";
 import TestUVWorkflow from "../3d/components/TestUVWorkflow";
 import MainTestComponent from "../3d/components/mainTestCOmponent";
-
+import SvgConverter from "../components/SvgConverter";
+import GlbMeshInspector from "../product_config/GlbMeshInspector";
 
 // ----------------------------------
 
@@ -34,6 +35,8 @@ const AppRoutes = () => {
         <Route path="/products" element={<ProductList />} />
         <Route path="/product/edit/:id" element={<ProductEditor />} />
         <Route path="/uvMap" element={<UvMap />} />
+        <Route path="/svg-converter" element={<SvgConverter />} />
+        <Route path="/product-config" element={<GlbMeshInspector />} />
 
       </Route>
 
