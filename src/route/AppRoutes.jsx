@@ -36,6 +36,7 @@ const AppRoutes = () => {
         <Route path="/product/edit/:id" element={<ProductEditor />} />
         <Route path="/uvMap" element={<UvMap />} />
         <Route path="/svg-converter" element={<SvgConverter />} />
+        <Route path="/product-config/:productId" element={<GlbMeshInspector />} />
         <Route path="/product-config" element={<GlbMeshInspector />} />
 
       </Route>

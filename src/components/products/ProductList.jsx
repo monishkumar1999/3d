@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../api/axios';
-import { Edit2, Package, Search } from 'lucide-react';
+import { Edit2, Package, Search, Settings2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const ProductList = () => {
@@ -102,13 +102,22 @@ const ProductList = () => {
                                             </span>
                                         </td>
                                         <td className="p-4 text-right pr-6">
-                                            <button
-                                                onClick={() => navigate(`/product/edit/${product.id}`)}
-                                                className="inline-flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors text-sm font-medium"
-                                            >
-                                                <Edit2 size={16} />
-                                                Edit
-                                            </button>
+                                            <div className="flex items-center justify-end gap-2">
+                                                <button
+                                                    onClick={() => navigate(`/product-config/${product.id}`)}
+                                                    className="inline-flex items-center gap-2 px-3 py-1.5 bg-violet-50 text-violet-600 rounded-lg hover:bg-violet-100 transition-colors text-sm font-medium"
+                                                >
+                                                    <Settings2 size={16} />
+                                                    Configure
+                                                </button>
+                                                <button
+                                                    onClick={() => navigate(`/product/edit/${product.id}`)}
+                                                    className="inline-flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors text-sm font-medium"
+                                                >
+                                                    <Edit2 size={16} />
+                                                    Edit
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))
