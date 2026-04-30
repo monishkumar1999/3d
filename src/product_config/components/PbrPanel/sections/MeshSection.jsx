@@ -10,7 +10,7 @@ const MeshSection = memo(() => {
     const pbrSets = useProductConfigStore((state) => state.pbrSets);
 
     return (
-        <div className="flex flex-col border-b border-zinc-200" style={{ height: "45%" }}>
+        <div className="flex flex-col h-full bg-white">
             <div className="px-5 pt-4 pb-3 border-b border-zinc-100 flex items-center justify-between flex-shrink-0">
                 <div className="flex items-center gap-2">
                     <Layers size={12} className="text-indigo-600" />
