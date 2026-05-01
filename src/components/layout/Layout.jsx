@@ -26,6 +26,8 @@ const SIDEBAR_ITEMS = [
   { icon: Palette, label: "Customization Studio", href: "/studio" },
   { icon: Settings, label: "UvMap", href: "/uvMap" },
    { icon: Settings, label: "Product Configuration", href: "/product-config" },
+   { icon: Box, label: "3D Model List", href: "/product-config-list" },
+   { icon: Layers, label: "Mesh Configuration", href: "/mesh-config" },
 ];
 
 const Sidebar = ({ isOpen, toggleSidebar }) => {
@@ -38,9 +40,12 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
       ></div>
 
       <aside
-        className={`fixed inset-y-0 left-0 z-30 w-64 bg-slate-900 text-white transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-auto ${isOpen ? "translate-x-0" : "-translate-x-full"
-          }`}
+        className={`fixed inset-y-0 left-0 z-30 bg-slate-900 text-white transition-all duration-300 ease-in-out lg:relative overflow-hidden ${
+          isOpen ? "w-64 translate-x-0 opacity-100" : "w-0 -translate-x-full opacity-0 lg:translate-x-0"
+        }`}
       >
+        <div className="flex flex-col h-full w-64">
+
         <div className="flex items-center justify-between h-16 px-6 bg-slate-950 border-b border-slate-800">
           <span className="text-xl font-bold tracking-wider text-white">
             NEXUS<span className="text-indigo-500">app</span>
@@ -76,6 +81,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
             Sign Out
           </button>
         </div>
+        </div>
       </aside>
     </>
   );
@@ -87,7 +93,7 @@ const Header = ({ toggleSidebar }) => {
       <div className="flex items-center">
         <button
           onClick={toggleSidebar}
-          className="p-2 mr-4 text-gray-600 rounded-md lg:hidden hover:bg-gray-100 focus:outline-none"
+          className="p-2 mr-4 text-gray-600 rounded-md hover:bg-gray-100 focus:outline-none"
         >
           <Menu size={24} />
         </button>
@@ -107,7 +113,7 @@ const Header = ({ toggleSidebar }) => {
 };
 
 const Layout = ({ children }) => {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
 
   return (

@@ -36,15 +36,16 @@ export default function SvgConverter() {
 
             shapes.forEach(shape => {
                 // Apply Full White Fill
-                // We use rgba for fill to support opacity
                 const whiteFill = `rgba(255, 255, 255, ${currentFillOpacity})`;
                 shape.setAttribute("fill", whiteFill);
                 
-                // Remove inline styles that might override attributes
-                if (shape.getAttribute("style")) {
-                    shape.setAttribute("style", shape.getAttribute('style').replace(/fill:[^;]+;?/i, ''));
-                    shape.setAttribute("style", shape.getAttribute('style').replace(/stroke:[^;]+;?/i, ''));
-                }
+                // Remove any inline styles completely to prevent overrides
+                shape.removeAttribute("style");
+
+                // Remove any fill-opacity / opacity that might make it transparent
+                shape.removeAttribute("fill-opacity");
+                shape.removeAttribute("opacity");
+                shape.removeAttribute("fill-rule");
 
                 // Apply White Border (Stroke)
                 if (currentStrokeWidth > 0) {
@@ -54,6 +55,7 @@ export default function SvgConverter() {
                     shape.setAttribute("stroke-linecap", "round");
                 } else {
                     shape.removeAttribute("stroke");
+                    shape.removeAttribute("stroke-width");
                 }
             });
 

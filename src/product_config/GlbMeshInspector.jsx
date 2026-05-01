@@ -4,46 +4,58 @@
  * This component is pure layout + file input wiring.
  */
 import { useRef, useCallback, useEffect, Suspense, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Environment, ContactShadows } from "@react-three/drei";
 import {
     Sparkles, CheckCircle, RotateCcw, Upload,
     Save, Loader2, AlertCircle, Tag,
+    PanelRightClose, PanelRightOpen,
 } from "lucide-react";
 
-import Loader         from "./components/Loader";
-import GlbModelPbr    from "./components/GlbModelPbr";
-import DropOverlay    from "./components/DropOverlay";
+import Loader from "./components/Loader";
+import GlbModelPbr from "./components/GlbModelPbr";
+import DropOverlay from "./components/DropOverlay";
 import PbrUploadPanel from "./components/PbrUploadPanel";
 import { useProductConfigStore } from "./store/useProductConfigStore";
 
-const CAMERA  = { position: [0, 0, 4.5], fov: 45 };
+const CAMERA = { position: [0, 0, 4.5], fov: 45 };
 const GL_OPTS = { antialias: true, preserveDrawingBuffer: false };
 
 export default function GlbMeshInspector() {
     const { productId: urlProductId } = useParams();
+    const navigate = useNavigate();
 
     // Product name — only used when there's no URL productId (first-time create)
     const [productName, setProductName] = useState("");
 
     // Store slices
-    const glbUrl         = useProductConfigStore(s => s.glbUrl);
-    const fileName       = useProductConfigStore(s => s.fileName);
-    const loadGlb        = useProductConfigStore(s => s.loadGlb);
-    const resetGlb       = useProductConfigStore(s => s.resetGlb);
-    const saveConfig     = useProductConfigStore(s => s.saveConfig);
-    const isSaving       = useProductConfigStore(s => s.isSaving);
-    const saveError      = useProductConfigStore(s => s.saveError);
-    const saveSuccess    = useProductConfigStore(s => s.saveSuccess);
+    const glbUrl = useProductConfigStore(s => s.glbUrl);
+    const fileName = useProductConfigStore(s => s.fileName);
+    const loadGlb = useProductConfigStore(s => s.loadGlb);
+    const resetGlb = useProductConfigStore(s => s.resetGlb);
+    const saveConfig = useProductConfigStore(s => s.saveConfig);
+    const isSaving = useProductConfigStore(s => s.isSaving);
+    const saveError = useProductConfigStore(s => s.saveError);
+    const saveSuccess = useProductConfigStore(s => s.saveSuccess);
     const createdProductId = useProductConfigStore(s => s.createdProductId);
+    const availableProducts = useProductConfigStore(s => s.availableProducts);
+    const fetchProductNames = useProductConfigStore(s => s.fetchProductNames);
+    const fetchProductDetails = useProductConfigStore(s => s.fetchProductDetails);
+
+    const [showSidebar, setShowSidebar] = useState(true);
+
+    // Sync local productName with store fileName when loading existing product
+    useEffect(() => {
+        if (fileName) setProductName(fileName);
+    }, [fileName]);
 
     // After first-time create, subsequent saves reuse the returned product id
     const effectiveProductId = urlProductId || createdProductId || null;
 
     const handleSave = useCallback(() => {
         if (effectiveProductId) {
-            // UPDATE — product already exists (either from URL or previous create)
+            // UPDATE — product already exists
             saveConfig({ productId: effectiveProductId });
         } else {
             // CREATE — first-time save, send product_name
@@ -51,17 +63,24 @@ export default function GlbMeshInspector() {
         }
     }, [saveConfig, effectiveProductId, productName]);
 
-    const fileInputRef  = useRef(null);
+    useEffect(() => {
+        fetchProductNames();
+        if (urlProductId) {
+            fetchProductDetails(urlProductId);
+        }
+    }, [fetchProductNames, fetchProductDetails, urlProductId]);
+
+    const fileInputRef = useRef(null);
 
     useEffect(() => () => resetGlb(), [resetGlb]);
 
-    const handleFile    = useCallback((file) => loadGlb(file), [loadGlb]);
-    const onInputChange = useCallback((e)    => loadGlb(e.target.files[0]), [loadGlb]);
+    const handleFile = useCallback((file) => loadGlb(file), [loadGlb]);
+    const onInputChange = useCallback((e) => loadGlb(e.target.files[0]), [loadGlb]);
 
     // Save button disabled when: saving, OR glb not loaded, OR (no product bound AND name is empty)
     const saveDisabled =
         isSaving ||
-        !glbUrl  ||
+        !glbUrl ||
         (!effectiveProductId && !productName.trim());
 
     const saveTitle = !glbUrl
@@ -103,14 +122,38 @@ export default function GlbMeshInspector() {
                                         focus-within:border-indigo-400 focus-within:ring-2
                                         focus-within:ring-indigo-100 transition-all">
                             <Tag size={11} className="text-indigo-500 flex-shrink-0" />
-                            <input
-                                type="text"
-                                placeholder="Product name…"
-                                value={productName}
-                                onChange={(e) => setProductName(e.target.value)}
+                            <select
+                                value={urlProductId || "NEW"}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (val === "NEW") {
+                                        navigate('/product-config');
+                                    } else {
+                                        navigate(`/product-config/${val}`);
+                                    }
+                                }}
                                 className="bg-transparent text-[11px] font-bold text-zinc-700
-                                           outline-none w-40 placeholder:text-zinc-300"
-                            />
+                                           outline-none w-44 cursor-pointer"
+                            >
+                                <option value="NEW">+ Create New Product</option>
+                                <optgroup label="Link to Existing Product">
+                                    {availableProducts.map(p => (
+                                        <option key={p.id} value={p.id}>{p.name}</option>
+                                    ))}
+                                </optgroup>
+                            </select>
+
+                            {!urlProductId && (
+                                <input
+                                    type="text"
+                                    placeholder="Enter name…"
+                                    value={productName}
+                                    onChange={(e) => setProductName(e.target.value)}
+                                    className="bg-transparent text-[11px] font-bold text-zinc-700
+                                               outline-none w-32 border-l border-zinc-100 pl-2
+                                               placeholder:text-zinc-300"
+                                />
+                            )}
                         </div>
                     )}
 
@@ -161,6 +204,32 @@ export default function GlbMeshInspector() {
                         </div>
                     )}
 
+                    {/* Update Model */}
+                    {urlProductId && (
+                        <button
+                            onClick={() => fileInputRef.current?.click()}
+                            title="Update 3D Model"
+                            className="flex items-center justify-center w-9 h-9 rounded-xl 
+                                       bg-white border border-zinc-200 text-zinc-500 
+                                       hover:text-amber-600 hover:border-amber-200 hover:bg-amber-50 
+                                       transition-all shadow-sm active:scale-95"
+                        >
+                            <Upload size={16} />
+                        </button>
+                    )}
+
+                    {/* Sidebar Toggle */}
+                    <button
+                        onClick={() => setShowSidebar(!showSidebar)}
+                        title={showSidebar ? "Hide Sidebar" : "Show Sidebar"}
+                        className="flex items-center justify-center w-9 h-9 rounded-xl 
+                                   bg-white border border-zinc-200 text-zinc-500 
+                                   hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 
+                                   transition-all shadow-sm active:scale-95"
+                    >
+                        {showSidebar ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
+                    </button>
+
                     {/* Save button */}
                     <button
                         onClick={handleSave}
@@ -185,8 +254,8 @@ export default function GlbMeshInspector() {
                 {/* LEFT — 3-D Viewport */}
                 <div className="flex-1 relative min-w-0">
                     <Canvas camera={CAMERA} gl={GL_OPTS} dpr={[1, 1.5]}
-                            style={{ width: "100%", height: "100%" }}
-                            frameloop={glbUrl ? "always" : "demand"}>
+                        style={{ width: "100%", height: "100%" }}
+                        frameloop={glbUrl ? "always" : "demand"}>
                         <ambientLight intensity={0.4} />
                         <directionalLight position={[5, 10, 5]} intensity={0.9} castShadow
                             shadow-mapSize={[1024, 1024]} />
@@ -221,7 +290,7 @@ export default function GlbMeshInspector() {
                 </div>
 
                 {/* RIGHT — Mesh list + PBR uploader */}
-                <PbrUploadPanel />
+                {showSidebar && <PbrUploadPanel />}
             </div>
         </div>
     );

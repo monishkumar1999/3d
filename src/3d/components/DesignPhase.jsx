@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Environment, OrbitControls, Center, ContactShadows } from "@react-three/drei";
-import { Type, Palette, Upload, Download, Image as ImageIcon, ChevronLeft, X, Save, Camera, Eye, EyeOff } from "lucide-react";
+import { Type, Palette, Upload, Download, Image as ImageIcon, ChevronLeft, X, Save, Camera, Eye, EyeOff, Settings, Sun, Cloud, Building2, Trees, Moon, Sunset, Layers, Sparkles, Scan } from "lucide-react";
 import { useStore } from "../../store/useStore";
 
 import DynamicModel from "./DynamicModel";
@@ -24,6 +24,20 @@ const Button = ({ children, onClick, variant = "primary", className = "", disabl
     );
 };
 
+const TooltipButton = ({ icon: Icon, label, onClick, isActive }) => (
+    <div className="relative group flex flex-col items-center">
+        <button
+            onClick={onClick}
+            className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 ${isActive ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' : 'text-zinc-400 hover:bg-zinc-50 hover:text-indigo-600'}`}
+        >
+            <Icon size={22} />
+        </button>
+        <span className="absolute left-16 bg-zinc-900 text-white text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-[100] uppercase tracking-widest shadow-xl">
+            {label}
+        </span>
+    </div>
+);
+
 // Simple Loading Screen
 import { Html, useProgress } from "@react-three/drei";
 
@@ -39,10 +53,21 @@ const Loader = () => {
     );
 };
 
-const DesignPhase = ({ glbUrl, meshConfig, meshTextures, globalMaterial, activeStickerUrl, setGlobalMaterial, setActiveStickerUrl, onBack, onUpdateTexture }) => {
+const DesignPhase = ({ glbUrl, meshConfig, meshTextures, baseTextures, globalMaterial, activeStickerUrl, setGlobalMaterial, setActiveStickerUrl, onBack, onUpdateTexture }) => {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [selectedMesh, setSelectedMesh] = useState(null);
     const [meshColors, setMeshColors] = useState({});
+
+    // Material/Lighting State
+    const [envPreset, setEnvPreset] = useState("studio");
+    const [brightness, setBrightness] = useState(1);
+    const [showWireframe, setShowWireframe] = useState(true);
+    const [pbrTextures, setPbrTextures] = useState({
+        normal: null,
+        roughness: null,
+        metalness: null,
+        ao: null
+    });
 
     // Store
     const { materialSettings, setMaterialSetting, saveMaterialConfiguration, productName, subcategory, setProductName, setSubcategory } = useStore();
@@ -194,11 +219,21 @@ const DesignPhase = ({ glbUrl, meshConfig, meshTextures, globalMaterial, activeS
 
                     <div className="space-y-4">
                         <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest block">Uploads</label>
-                        <label className="flex flex-col items-center justify-center h-32 border-2 border-dashed border-zinc-200 rounded-2xl hover:border-indigo-400 hover:bg-indigo-50/50 transition-all cursor-pointer group bg-zinc-50/50">
-                            <Upload size={24} className="text-zinc-300 group-hover:text-indigo-500 mb-2 transition-colors" />
-                            <span className="text-xs font-bold text-zinc-500 group-hover:text-indigo-600">Upload Image</span>
-                            <input type="file" accept="image/*" onChange={(e) => { if (e.target.files[0]) setActiveStickerUrl(URL.createObjectURL(e.target.files[0])); }} className="hidden" />
-                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                            <label className="flex flex-col items-center justify-center h-28 border-2 border-dashed border-zinc-200 rounded-2xl hover:border-indigo-400 hover:bg-indigo-50/50 transition-all cursor-pointer group bg-zinc-50/50">
+                                <Upload size={20} className="text-zinc-300 group-hover:text-indigo-500 mb-1 transition-colors" />
+                                <span className="text-[10px] font-bold text-zinc-500 group-hover:text-indigo-600">Image</span>
+                                <input type="file" accept="image/*" onChange={(e) => { if (e.target.files[0]) setActiveStickerUrl(URL.createObjectURL(e.target.files[0])); }} className="hidden" />
+                            </label>
+
+                            <button 
+                                onClick={() => setActiveStickerUrl('__TEXT_NODE__')}
+                                className="flex flex-col items-center justify-center h-28 border-2 border-dashed border-zinc-200 rounded-2xl hover:border-indigo-400 hover:bg-indigo-50/50 transition-all group bg-zinc-50/50"
+                            >
+                                <Type size={20} className="text-zinc-300 group-hover:text-indigo-500 mb-1 transition-colors" />
+                                <span className="text-[10px] font-bold text-zinc-500 group-hover:text-indigo-600">Text</span>
+                            </button>
+                        </div>
                     </div>
 
                     {/* Selected Part Color Control */}
@@ -223,83 +258,88 @@ const DesignPhase = ({ glbUrl, meshConfig, meshTextures, globalMaterial, activeS
                         </div>
                     )}
 
+                    {/* Advanced Material & PBR (Admin) */}
                     <div className="space-y-4">
                         <div className="flex justify-between items-center">
-                            <label className="text-xs font-bold text-zinc-400 uppercase tracking-widest block">Studio Settings (Admin)</label>
+                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">3D Material Engine</label>
                             <button onClick={saveMaterialConfiguration} className="text-indigo-600 hover:text-indigo-800 transition-colors" title="Save Preset">
                                 <Save size={14} />
                             </button>
                         </div>
-                        <div className="bg-white border border-zinc-200 rounded-xl p-4 shadow-sm space-y-5">
+                        
+                        <div className="bg-white border border-zinc-200 rounded-2xl p-4 shadow-sm space-y-5">
+                            {/* Environment Preset */}
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">Environment</label>
+                                <div className="grid grid-cols-4 gap-2">
+                                    {[
+                                        { id: 'studio', icon: Building2, label: 'Studio' },
+                                        { id: 'city', icon: Building2, label: 'City' },
+                                        { id: 'park', icon: Trees, label: 'Park' },
+                                        { id: 'sunset', icon: Sunset, label: 'Sunset' },
+                                    ].map(env => (
+                                        <button
+                                            key={env.id}
+                                            onClick={() => setEnvPreset(env.id)}
+                                            className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${envPreset === env.id ? 'bg-indigo-50 border-indigo-200 text-indigo-600 shadow-sm' : 'border-zinc-100 text-zinc-400 hover:bg-zinc-50'}`}
+                                        >
+                                            <env.icon size={16} />
+                                            <span className="text-[8px] mt-1 font-bold uppercase">{env.label}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Brightness */}
+                            <div className="space-y-1">
+                                <div className="flex justify-between text-[10px] font-bold text-zinc-400 uppercase">
+                                    <span>Exposure / Brightness</span>
+                                    <span className="text-indigo-600">{brightness.toFixed(1)}x</span>
+                                </div>
+                                <input
+                                    type="range" min="0.1" max="2.5" step="0.1"
+                                    value={brightness}
+                                    onChange={(e) => setBrightness(Number(e.target.value))}
+                                    className="w-full h-1 bg-zinc-100 rounded-lg appearance-none accent-indigo-600"
+                                />
+                            </div>
 
                             {/* Roughness */}
-                            <div className="space-y-1">
-                                <div className="flex justify-between text-xs text-zinc-400">
+                            <div className="space-y-1 pt-4 border-t border-zinc-50">
+                                <div className="flex justify-between text-[10px] font-bold text-zinc-400 uppercase">
                                     <span>Roughness</span>
                                     <span>{materialSettings.roughness}</span>
                                 </div>
                                 <input
-                                    type="range"
-                                    min="0"
-                                    max="1"
-                                    step="0.01"
+                                    type="range" min="0" max="1" step="0.01"
                                     value={materialSettings.roughness}
                                     onChange={(e) => setMaterialSetting("roughness", Number(e.target.value))}
-                                    className="w-full h-1 bg-zinc-200 rounded-lg appearance-none accent-indigo-600"
+                                    className="w-full h-1 bg-zinc-100 rounded-lg appearance-none accent-indigo-600"
                                 />
                             </div>
+                        </div>
+                    </div>
 
-                            {/* Sheen */}
-                            <div className="space-y-1">
-                                <div className="flex justify-between text-xs text-zinc-400">
-                                    <span>Sheen (Velvet)</span>
-                                    <span>{materialSettings.sheen}</span>
-                                </div>
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max="1"
-                                    step="0.01"
-                                    value={materialSettings.sheen}
-                                    onChange={(e) => setMaterialSetting("sheen", Number(e.target.value))}
-                                    className="w-full h-1 bg-zinc-200 rounded-lg appearance-none accent-indigo-600"
-                                />
-                            </div>
-
-                            {/* Sheen Roughness */}
-                            <div className="space-y-1">
-                                <div className="flex justify-between text-xs text-zinc-400">
-                                    <span>Sheen Spread</span>
-                                    <span>{materialSettings.sheenRoughness}</span>
-                                </div>
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max="1"
-                                    step="0.01"
-                                    value={materialSettings.sheenRoughness}
-                                    onChange={(e) => setMaterialSetting("sheenRoughness", Number(e.target.value))}
-                                    className="w-full h-1 bg-zinc-200 rounded-lg appearance-none accent-indigo-600"
-                                />
-                            </div>
-
-                            {/* Metalness (Optional Admin Override) */}
-                            <div className="space-y-1 pt-4 border-t border-zinc-100">
-                                <div className="flex justify-between text-xs text-zinc-400">
-                                    <span>Metalness</span>
-                                    <span>{materialSettings.metalness}</span>
-                                </div>
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max="1"
-                                    step="0.01"
-                                    value={materialSettings.metalness}
-                                    onChange={(e) => setMaterialSetting("metalness", Number(e.target.value))}
-                                    className="w-full h-1 bg-zinc-200 rounded-lg appearance-none accent-indigo-600"
-                                />
-                            </div>
-
+                    {/* PBR Maps Section */}
+                    <div className="space-y-4">
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">PBR Surface Maps</label>
+                        <div className="grid grid-cols-2 gap-3">
+                            {[
+                                { key: 'normal', label: 'Normal', hint: 'Detail' },
+                                { key: 'roughness', label: 'Rough', hint: 'Gloss' },
+                                { key: 'metalness', label: 'Metal', hint: 'Reflect' },
+                                { key: 'ao', label: 'AO', hint: 'Shadow' },
+                            ].map(map => (
+                                <label key={map.key} className="flex flex-col items-center justify-center p-3 border-2 border-dashed border-zinc-100 rounded-2xl bg-zinc-50/50 hover:bg-indigo-50 hover:border-indigo-200 transition-all cursor-pointer group">
+                                    <Upload size={14} className="text-zinc-300 group-hover:text-indigo-500 mb-1" />
+                                    <span className="text-[9px] font-bold text-zinc-500 group-hover:text-indigo-600 uppercase tracking-tighter">{map.label}</span>
+                                    <input type="file" className="hidden" accept="image/*" onChange={(e) => {
+                                        const file = e.target.files[0];
+                                        if (file) setPbrTextures(prev => ({ ...prev, [map.key]: URL.createObjectURL(file) }));
+                                    }} />
+                                    {pbrTextures[map.key] && <div className="w-1 h-1 rounded-full bg-green-500 mt-1" />}
+                                </label>
+                            ))}
                         </div>
                     </div>
 
@@ -311,10 +351,21 @@ const DesignPhase = ({ glbUrl, meshConfig, meshTextures, globalMaterial, activeS
             {/* CENTER: WORKSPACE - Always full width minus the 20 sidebar */}
             <div className="flex-1 bg-[#f8f9fc] relative overflow-hidden ml-0">
                 {/* Top Bar */}
-                <div className="absolute top-8 left-8 z-10 pointer-events-none">
+                <div className="absolute top-8 left-8 z-10 pointer-events-none flex flex-col gap-3">
                     <div className="bg-white/90 backdrop-blur-md px-4 py-2 rounded-full shadow-sm border border-white/50 pointer-events-auto inline-flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
                         <h1 className="font-bold text-zinc-800 text-xs">Editor Live <span className="text-zinc-300 mx-2">|</span> <span className="text-indigo-600">{productName || 'Untitled Project'}</span></h1>
+                    </div>
+                    
+                    {/* View Controls */}
+                    <div className="flex gap-2 pointer-events-auto">
+                        <button 
+                            onClick={() => setShowWireframe(!showWireframe)}
+                            className={`p-2 rounded-xl border transition-all ${showWireframe ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-white text-zinc-400 border-zinc-200 hover:bg-zinc-50'}`}
+                            title="Toggle UV Wireframe"
+                        >
+                            <Scan size={16} />
+                        </button>
                     </div>
                 </div>
 
@@ -374,8 +425,8 @@ const DesignPhase = ({ glbUrl, meshConfig, meshTextures, globalMaterial, activeS
                                 castShadow
                                 shadow-mapSize={[1024, 1024]}
                             />
-                            {/* HDR Environment - Cache busted once on mount */}
-                            <Environment files={hdrUrl} background={false} />
+                            {/* HDR Environment */}
+                            <Environment preset={envPreset} background={false} />
 
                             {/* <Environment preset="city" /> */}
 
@@ -384,7 +435,12 @@ const DesignPhase = ({ glbUrl, meshConfig, meshTextures, globalMaterial, activeS
                                     <DynamicModel
                                         url={glbUrl}
                                         meshTextures={meshTextures}
-                                        materialProps={globalMaterial}
+                                        baseTextures={baseTextures}
+                                        pbrTextures={pbrTextures}
+                                        materialProps={{
+                                            ...globalMaterial,
+                                            toneMappingExposure: brightness
+                                        }}
                                         setMeshList={() => { }}
                                     />
                                 </Center>
@@ -431,15 +487,6 @@ const DesignPhase = ({ glbUrl, meshConfig, meshTextures, globalMaterial, activeS
         </div>
     );
 };
-
-// Internal Tooltip Button
-const TooltipButton = ({ icon: Icon, onClick, isActive }) => (
-    <div className="group relative flex justify-center">
-        <button onClick={onClick} className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${isActive ? 'bg-indigo-50 text-indigo-600 shadow-sm' : 'text-zinc-400 hover:bg-zinc-50 hover:text-zinc-600'}`}>
-            <Icon size={22} />
-        </button>
-    </div>
-);
 
 
 const SaveProductModal = ({ isOpen, onClose, onConfirm, isSaving, initialName, initialSubcategoryId, snapshotUrl, categories, subCategories }) => {

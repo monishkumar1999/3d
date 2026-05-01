@@ -9,7 +9,7 @@
  */
 import { create } from "zustand";
 import * as THREE from "three";
-import { saveProductConfig } from "../../api/productConfigApi";
+import { saveProductConfig, getProductNames, getProductDetails } from "../../api/productConfigApi";
 
 // PBR slot definitions shared with UI components via this file.
 export const PBR_SLOTS = [
@@ -104,10 +104,23 @@ function loadTextureFromFile(file, colorSpace) {
     });
 }
 
+function loadTextureFromUrl(url, colorSpace) {
+    return new Promise((resolve) => {
+        new THREE.TextureLoader().load(url, (tex) => {
+            tex.colorSpace = colorSpace;
+            tex.flipY = false;
+            tex.needsUpdate = true;
+            resolve(tex);
+        });
+    });
+}
+
 export const useProductConfigStore = create((set, get) => ({
     glbUrl: null,
     glbFile: null,          // raw File — needed for multipart upload
     fileName: null,
+    availableProducts: [],
+    _pendingConfig: null,
     _prevBlobUrl: null,
 
     isSaving: false,
@@ -143,6 +156,7 @@ export const useProductConfigStore = create((set, get) => ({
             glbUrl: null,
             glbFile: null,
             fileName: null,
+            availableProducts: [],
             _prevBlobUrl: null,
             meshes: [],
             selectedMeshId: null,
@@ -152,26 +166,103 @@ export const useProductConfigStore = create((set, get) => ({
         });
     },
 
+    fetchProductDetails: async (id) => {
+        set({ isSaving: true, saveError: null });
+        try {
+            console.log("Fetching product details for:", id);
+            const res = await getProductDetails(id);
+            console.log("API Response:", res.data);
+            
+            if (res.data?.success) {
+                const product = res.data.product;
+                set({ 
+                    glbUrl: product.base_model_url,
+                    fileName: product.name,
+                    createdProductId: product.id,
+                    _pendingConfig: product.configuration,
+                    isSaving: false
+                });
+            } else {
+                set({ isSaving: false, saveError: res.data?.message || "Failed to fetch product data" });
+            }
+        } catch (err) {
+            console.error("fetchProductDetails error:", err);
+            set({ isSaving: false, saveError: "Network error: check if backend is running" });
+        }
+    },
+
+    fetchProductNames: async () => {
+        try {
+            const res = await getProductNames();
+            if (res.data?.success) {
+                set({ availableProducts: res.data.products || [] });
+            }
+        } catch (err) {
+            console.error("Failed to fetch product names:", err);
+        }
+    },
+
     meshes: [],
     selectedMeshId: null,
 
-    setMeshes: (meshes) =>
-        set((state) => {
-            const meshIds = new Set(meshes.map((mesh) => mesh.id));
-            const nextPbrSets = { ...state.pbrSets };
+    setMeshes: async (meshes) => {
+        const state = get();
+        const meshIds = new Set(meshes.map((mesh) => mesh.id));
+        const nextPbrSets = { ...state.pbrSets };
 
-            meshes.forEach((mesh) => {
-                if (!nextPbrSets[mesh.id]) {
-                    nextPbrSets[mesh.id] = normalizePbrSetState(null);
+        meshes.forEach((mesh) => {
+            if (!nextPbrSets[mesh.id]) {
+                nextPbrSets[mesh.id] = normalizePbrSetState(null);
+            }
+        });
+
+        set({
+            meshes,
+            selectedMeshId: meshIds.has(state.selectedMeshId) ? state.selectedMeshId : null,
+            pbrSets: nextPbrSets,
+        });
+
+        // Apply pending config if exists
+        if (state._pendingConfig) {
+            const config = state._pendingConfig;
+            set({ _pendingConfig: null });
+
+            const newPbrSets = { ...nextPbrSets };
+            
+            for (const meshConf of (config.meshes || [])) {
+                // Find matching mesh in discovered meshes
+                const actualMesh = meshes.find(m => m.label === meshConf.name || m.id === meshConf.name);
+                if (!actualMesh) continue;
+
+                const sets = await Promise.all((meshConf.sets || []).map(async (setConf, idx) => {
+                    const maps = {};
+                    for (const slot of PBR_SLOTS) {
+                        const url = setConf.maps?.[slot.key];
+                        if (url) {
+                            maps[slot.key] = await loadTextureFromUrl(url, slot.colorSpace);
+                        }
+                    }
+                    return {
+                        id: idx + 1,
+                        name: setConf.name || `Set ${idx + 1}`,
+                        maps,
+                        settings: {
+                            textureRepeat: setConf.textureRepeat || 1,
+                            normalIntensity: setConf.normalIntensity || 1,
+                        }
+                    };
+                }));
+
+                if (sets.length > 0) {
+                    newPbrSets[actualMesh.id] = {
+                        activeSetId: sets[0].id,
+                        sets
+                    };
                 }
-            });
-
-            return {
-                meshes,
-                selectedMeshId: meshIds.has(state.selectedMeshId) ? state.selectedMeshId : null,
-                pbrSets: nextPbrSets,
-            };
-        }),
+            }
+            set({ pbrSets: newPbrSets });
+        }
+    },
 
     selectMesh: (meshId) => set({ selectedMeshId: meshId }),
     // Proxy for the UI to latch onto a set state if no mesh is explicitly selected
@@ -402,13 +493,13 @@ export const useProductConfigStore = create((set, get) => ({
      */
     saveConfig: async ({ productId, productName } = {}) => {
         const { glbFile, meshes, pbrSets } = get();
+        const isCreate = !productId;
 
-        if (!glbFile) {
+        if (!glbFile && isCreate) {
             set({ saveError: "Please load a GLB model first.", saveSuccess: false });
             return;
         }
 
-        const isCreate = !productId;
 
         if (isCreate && !productName?.trim()) {
             set({ saveError: "Please enter a product name.", saveSuccess: false });

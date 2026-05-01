@@ -59,6 +59,13 @@ const FloatingTextToolbar = ({
 
         const updatePosition = () => {
             if (!containerRef?.current) return;
+            
+            // Defensive check: ensure it's a DOM element
+            if (typeof containerRef.current.getBoundingClientRect !== 'function') {
+                console.warn('FloatingTextToolbar: containerRef.current is not a DOM element', containerRef.current);
+                return;
+            }
+
             const rect = containerRef.current.getBoundingClientRect();
             setScreenPos({
                 left: rect.left + position.left,

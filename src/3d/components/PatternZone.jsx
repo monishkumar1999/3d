@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Stage, Layer, Image as KImage, Transformer, Rect } from "react-konva";
-import { X } from "lucide-react";
+import { Stage, Layer, Image as KImage, Transformer, Rect, Text } from "react-konva";
+import { X, Trash, Layers, ArrowUp, ArrowDown, Sparkles } from "lucide-react";
+import FloatingTextToolbar from "./FloatingTextToolbar";
+import FloatingImageToolbar from "./FloatingImageToolbar";
 
 // Stable debounce that always calls the LATEST version of the callback
 function useStableDebounce(fn, delay) {
@@ -19,17 +21,19 @@ function useStableDebounce(fn, delay) {
 
 const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onStickerAdded, isSelected, onClick }) => {
     const stageRef = useRef(null);
+    const uiContainerRef = useRef(null); // Ref for DOM container
     const [maskImg, setMaskImg] = useState(null);
     const [wireframeImg, setWireframeImg] = useState(null);
     const [stickers, setStickers] = useState([]);
-    const stickersRef = useRef(stickers); // ref always has latest stickers
+    const [textNodes, setTextNodes] = useState([]); // New: Support for text
+    const stickersRef = useRef(stickers);
     stickersRef.current = stickers;
+    const textNodesRef = useRef(textNodes);
+    textNodesRef.current = textNodes;
 
     const [selectedId, setSelectedId] = useState(null);
     const trRef = useRef(null);
 
-    // Ratios — computed fresh on every render call but stored in ref for export
-    const ratioRef = useRef(1);
 
     useEffect(() => {
         if (!maskUrl) return;
@@ -82,20 +86,39 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
 
     useEffect(() => {
         if (!stickerUrl) return;
+
+        if (stickerUrl === '__TEXT_NODE__') {
+            const newText = {
+                id: 'text_' + Date.now().toString(),
+                text: 'DOUBLE CLICK TO EDIT',
+                x: maskImg ? maskImg.naturalWidth / 2 - 100 : 500, 
+                y: maskImg ? maskImg.naturalHeight / 2 - 50 : 500,
+                fontSize: 80, // Larger default for high-res stage
+                fill: '#ffffff',
+                fontFamily: 'Inter',
+                rotation: 0
+            };
+            setTextNodes(prev => [...prev, newText]);
+            setSelectedId(newText.id);
+            if (onStickerAdded) onStickerAdded();
+            setTimeout(() => triggerExport(), 150);
+            return;
+        }
+
         const img = new window.Image();
         img.src = stickerUrl;
         img.onload = () => {
             const newSticker = {
-                id: Date.now().toString(),
+                id: 'sticker_' + Date.now().toString(),
                 image: img,
-                x: 50, y: 50,
-                width: 120, height: 120,
+                x: maskImg ? maskImg.naturalWidth / 2 - 200 : 500,
+                y: maskImg ? maskImg.naturalHeight / 2 - 200 : 500,
+                width: 400, height: 400, // Larger default for high-res stage
                 rotation: 0
             };
             setStickers(prev => [...prev, newSticker]);
             setSelectedId(newSticker.id);
             if (onStickerAdded) onStickerAdded();
-            // Export after sticker is placed
             setTimeout(() => triggerExport(), 150);
         };
     }, [stickerUrl]);
@@ -113,26 +136,39 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
     const performExport = useCallback(() => {
         if (!stageRef.current || !maskImg) return;
 
-        // Hide transformer handles for clean export
+        // 1. Hide unwanted elements for clean export
         if (trRef.current) trRef.current.nodes([]);
-
-        // Force Konva to flush the layer draw so the transformer is truly hidden
-        // before we capture the canvas pixel data.
+        
         const layer = stageRef.current.getLayers()[0];
-        if (layer) layer.draw();
+        if (!layer) return;
 
-        const ratio = ratioRef.current;
-        const exportRatio = ratio > 0 ? (1 / ratio) : 2;
-        const uri = stageRef.current.toDataURL({ pixelRatio: exportRatio });
+        // Find wireframe and hide it
+        const wireframeNode = layer.findOne('.wireframe');
+        if (wireframeNode) wireframeNode.hide();
 
-        // Always export (stickersRef.current is always fresh)
-        if (stickersRef.current.length > 0) {
+        layer.draw();
+
+        // 2. Export full natural size
+        const uri = stageRef.current.toDataURL({ 
+            pixelRatio: 1,
+            x: 0,
+            y: 0,
+            width: maskImg.naturalWidth,
+            height: maskImg.naturalHeight
+        });
+
+        // 3. Restore visibility
+        if (wireframeNode) wireframeNode.show();
+        layer.draw();
+
+        // Export if there is ANY content (stickers or text)
+        if (stickersRef.current.length > 0 || textNodesRef.current.length > 0) {
             onUpdateTexture(meshName, uri);
         } else {
             onUpdateTexture(meshName, null);
         }
 
-        // Restore transformer after export
+        // Restore transformer
         if (selectedId && trRef.current) {
             const node = stageRef.current.findOne('#' + selectedId);
             if (node) { trRef.current.nodes([node]); trRef.current.getLayer()?.batchDraw(); }
@@ -143,11 +179,13 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
 
     if (!maskImg) return <div className="w-[300px] h-[300px] bg-black rounded-lg border border-zinc-200 animate-pulse" />;
 
+    // --- UI SCALING ---
+    // We keep the Stage at 1:1 logical size (mask dimensions)
+    // but scale the container div via CSS to fit our UI.
     const maxSize = 340;
-    const ratio = Math.min(maxSize / maskImg.naturalWidth, maxSize / maskImg.naturalHeight);
-    ratioRef.current = ratio; // keep ref updated
-    const w = maskImg.naturalWidth * ratio;
-    const h = maskImg.naturalHeight * ratio;
+    const uiScale = Math.min(maxSize / maskImg.naturalWidth, maxSize / maskImg.naturalHeight);
+    const displayW = maskImg.naturalWidth * uiScale;
+    const displayH = maskImg.naturalHeight * uiScale;
 
     return (
         <div className="relative group transition-all duration-300 p-2 z-10" onClick={onClick}>
@@ -157,11 +195,19 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
                     {meshName}
                 </span>
                 <div className="flex items-center gap-1.5">
-                    {stickers.length > 0 && (
+                    <button
+                        onClick={(e) => { e.stopPropagation(); triggerExport(); }}
+                        className="p-1 hover:bg-indigo-50 text-indigo-400 rounded-full border border-transparent hover:border-indigo-200"
+                        title="Force Sync 3D"
+                    >
+                        <Sparkles size={11} />
+                    </button>
+                    {(stickers.length > 0 || textNodes.length > 0) && (
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
                                 setStickers([]);
+                                setTextNodes([]);
                                 setSelectedId(null);
                                 onUpdateTexture(meshName, null);
                             }}
@@ -173,32 +219,40 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
                 </div>
             </div>
 
-            {/* Canvas — always black background */}
+            {/* Canvas Container with CSS Scaling */}
             <div
-                className={`rounded-lg overflow-hidden transition-all duration-300 bg-black border border-zinc-200 ${isSelected ? 'ring-4 ring-indigo-500 shadow-xl scale-[1.02]' : 'shadow-sm'}`}
-                style={{ width: w, height: h }}
+                className={`rounded-lg overflow-hidden transition-all duration-300 bg-white border border-zinc-200 ${isSelected ? 'ring-4 ring-indigo-500 shadow-xl scale-[1.02]' : 'shadow-sm'}`}
+                style={{ 
+                    width: displayW, 
+                    height: displayH,
+                    position: 'relative'
+                }}
             >
-                <Stage
-                    width={w} height={h}
-                    scaleX={ratio} scaleY={ratio}
-                    ref={stageRef}
-                    onMouseDown={(e) => {
-                        if (e.target === e.target.getStage()) setSelectedId(null);
+                <div 
+                    ref={uiContainerRef}
+                    style={{
+                        transform: `scale(${uiScale})`,
+                        transformOrigin: '0 0',
+                        width: maskImg.naturalWidth,
+                        height: maskImg.naturalHeight
                     }}
-                    onMouseUp={() => triggerExport()}
                 >
-                    <Layer>
-                        {/* Always black base */}
-                        <Rect
-                            width={maskImg.naturalWidth}
-                            height={maskImg.naturalHeight}
-                            fill="#000000"
-                            listening={false}
-                        />
+                    <Stage
+                        width={maskImg.naturalWidth}
+                        height={maskImg.naturalHeight}
+                        ref={stageRef}
+                        onMouseDown={(e) => {
+                            if (e.target === e.target.getStage()) setSelectedId(null);
+                        }}
+                        onMouseUp={() => triggerExport()}
+                    >
+                        <Layer>
+                        {/* Transparent base by default */}
 
                         {/* UV Mesh outline */}
                         {wireframeImg && (
                             <KImage
+                                name="wireframe" // Use name instead of id for class-like selection
                                 image={wireframeImg}
                                 width={wireframeImg.naturalWidth}
                                 height={wireframeImg.naturalHeight}
@@ -213,19 +267,19 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
                         )}
 
                         {/* Stickers */}
-                        {stickers.map((s, i) => (
+                        {stickers.map((s) => (
                             <KImage
                                 key={s.id}
                                 id={s.id}
                                 image={s.image}
                                 x={s.x} y={s.y}
                                 width={s.width} height={s.height}
+                                opacity={s.opacity ?? 1}
                                 rotation={s.rotation}
                                 draggable
                                 onClick={() => setSelectedId(s.id)}
                                 onDragMove={() => triggerExport()}
                                 onDragEnd={(e) => {
-                                    // Use id-based lookup to avoid stale closure on `i`
                                     const id = e.target.id();
                                     setStickers(prev => prev.map(st =>
                                         st.id === id ? { ...st, x: e.target.x(), y: e.target.y() } : st
@@ -237,15 +291,46 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
                                     const id = node.id();
                                     const newW = Math.max(5, node.width() * node.scaleX());
                                     const newH = Math.max(5, node.height() * node.scaleY());
-                                    // Reset Konva's internal scale so it doesn't compound on next transform
-                                    node.scaleX(1);
-                                    node.scaleY(1);
+                                    node.scaleX(1); node.scaleY(1);
                                     setStickers(prev => prev.map(st =>
-                                        st.id === id
-                                            ? { ...st, x: node.x(), y: node.y(), width: newW, height: newH, rotation: node.rotation() }
-                                            : st
+                                        st.id === id ? { ...st, x: node.x(), y: node.y(), width: newW, height: newH, rotation: node.rotation() } : st
                                     ));
-                                    // Delay export slightly so React re-render + Konva reconcile finishes first
+                                    setTimeout(() => triggerExport(), 50);
+                                }}
+                            />
+                        ))}
+
+                        {/* Text Nodes */}
+                        {textNodes.map((t) => (
+                            <Text
+                                key={t.id}
+                                id={t.id}
+                                text={t.text}
+                                x={t.x} y={t.y}
+                                fontSize={t.fontSize}
+                                fill={t.fill}
+                                fontFamily={t.fontFamily}
+                                opacity={t.opacity ?? 1}
+                                rotation={t.rotation}
+                                draggable
+                                fontStyle="bold"
+                                onClick={() => setSelectedId(t.id)}
+                                onDragMove={() => triggerExport()}
+                                onDragEnd={(e) => {
+                                    const id = e.target.id();
+                                    setTextNodes(prev => prev.map(tn =>
+                                        tn.id === id ? { ...tn, x: e.target.x(), y: e.target.y() } : tn
+                                    ));
+                                    triggerExport();
+                                }}
+                                onTransformEnd={(e) => {
+                                    const node = e.target;
+                                    const id = node.id();
+                                    const newSize = node.fontSize() * node.scaleX();
+                                    node.scaleX(1); node.scaleY(1);
+                                    setTextNodes(prev => prev.map(tn =>
+                                        tn.id === id ? { ...tn, x: node.x(), y: node.y(), fontSize: newSize, rotation: node.rotation() } : tn
+                                    ));
                                     setTimeout(() => triggerExport(), 50);
                                 }}
                             />
@@ -258,12 +343,126 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
                             anchorFill="#ffffff"
                             anchorSize={8}
                             borderDash={[2, 2]}
-                            // Do NOT export during mid-transform — scale is not yet normalised.
-                            // onTransformEnd handles the final export after normalisation.
                         />
                     </Layer>
-                </Stage>
+                    </Stage>
+                </div>
             </div>
+
+            {/* Floating Toolbars */}
+            {selectedId && stageRef.current && (
+                (() => {
+                    const node = stageRef.current.findOne('#' + selectedId);
+                    if (!node) return null;
+                    const box = node.getClientRect();
+                    // Multiply logical coordinates by uiScale to get screen-relative offset
+                    const pos = { 
+                        top: box.y * uiScale, 
+                        left: (box.x + box.width / 2) * uiScale 
+                    };
+                    
+                    if (selectedId.startsWith('text_')) {
+                        const textNode = textNodes.find(t => t.id === selectedId);
+                        return (
+                            <FloatingTextToolbar 
+                                sticker={textNode}
+                                containerRef={uiContainerRef}
+                                position={pos}
+                                onChange={(updates) => {
+                                    setTextNodes(prev => prev.map(t => t.id === selectedId ? { ...t, ...updates } : t));
+                                    setTimeout(() => triggerExport(), 50);
+                                }}
+                                onDelete={() => {
+                                    setTextNodes(prev => prev.filter(t => t.id !== selectedId));
+                                    setSelectedId(null);
+                                    setTimeout(() => triggerExport(), 50);
+                                }}
+                                onDuplicate={() => {
+                                    const t = textNodes.find(t => t.id === selectedId);
+                                    const nt = { ...t, id: 'text_' + Date.now(), x: t.x + 20, y: t.y + 20 };
+                                    setTextNodes(prev => [...prev, nt]);
+                                    setSelectedId(nt.id);
+                                }}
+                                onMoveForward={() => {
+                                    setTextNodes(prev => {
+                                        const idx = prev.findIndex(t => t.id === selectedId);
+                                        if (idx === prev.length - 1) return prev;
+                                        const next = [...prev];
+                                        [next[idx], next[idx+1]] = [next[idx+1], next[idx]];
+                                        return next;
+                                    });
+                                }}
+                                onMoveBackward={() => {
+                                    setTextNodes(prev => {
+                                        const idx = prev.findIndex(t => t.id === selectedId);
+                                        if (idx === 0) return prev;
+                                        const next = [...prev];
+                                        [next[idx], next[idx-1]] = [next[idx-1], next[idx]];
+                                        return next;
+                                    });
+                                }}
+                            />
+                        );
+                    } else if (selectedId.startsWith('sticker_')) {
+                        const sticker = stickers.find(s => s.id === selectedId);
+                        return (
+                            <FloatingImageToolbar 
+                                sticker={sticker}
+                                containerRef={uiContainerRef}
+                                position={pos}
+                                onChange={(updates) => {
+                                    setStickers(prev => prev.map(s => s.id === selectedId ? { ...s, ...updates } : s));
+                                    setTimeout(() => triggerExport(), 50);
+                                }}
+                                onDelete={() => {
+                                    setStickers(prev => prev.filter(s => s.id !== selectedId));
+                                    setSelectedId(null);
+                                    setTimeout(() => triggerExport(), 50);
+                                }}
+                                onDuplicate={() => {
+                                    const s = stickers.find(s => s.id === selectedId);
+                                    const ns = { ...s, id: 'sticker_' + Date.now(), x: s.x + 20, y: s.y + 20 };
+                                    setStickers(prev => [...prev, ns]);
+                                    setSelectedId(ns.id);
+                                }}
+                                onMoveForward={() => {
+                                    setStickers(prev => {
+                                        const idx = prev.findIndex(s => s.id === selectedId);
+                                        if (idx === prev.length - 1) return prev;
+                                        const next = [...prev];
+                                        [next[idx], next[idx+1]] = [next[idx+1], next[idx]];
+                                        return next;
+                                    });
+                                }}
+                                onMoveBackward={() => {
+                                    setStickers(prev => {
+                                        const idx = prev.findIndex(s => s.id === selectedId);
+                                        if (idx === 0) return prev;
+                                        const next = [...prev];
+                                        [next[idx], next[idx-1]] = [next[idx-1], next[idx]];
+                                        return next;
+                                    });
+                                }}
+                                onMoveToFront={() => {
+                                    setStickers(prev => {
+                                        const idx = prev.findIndex(s => s.id === selectedId);
+                                        const item = prev[idx];
+                                        return [...prev.filter(s => s.id !== selectedId), item];
+                                    });
+                                }}
+                                onMoveToBack={() => {
+                                    setStickers(prev => {
+                                        const idx = prev.findIndex(s => s.id === selectedId);
+                                        const item = prev[idx];
+                                        return [item, ...prev.filter(s => s.id !== selectedId)];
+                                    });
+                                }}
+                            />
+                        );
+                    }
+                    return null;
+                })()
+            )}
         </div>
     );
 };

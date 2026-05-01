@@ -85,7 +85,7 @@ const MeshCard = ({ mesh, maskUrl, onUpload, onRemove, isPlaced }) => {
     );
 }
 
-const SetupPhase = ({ glbUrl, meshList, meshConfig, globalMaterial, setGlbUrl, handleGlb, handleMaskUpload, setMeshList, onLaunch }) => {
+const SetupPhase = ({ glbUrl, meshList, meshConfig, globalMaterial, setGlbUrl, handleGlb, handleMaskUpload, setMeshList, onLaunch, baseTextures, autoPlaceMeshes }) => {
 
     const [placedMeshes, setPlacedMeshes] = useState([]);
     const { productName, setProductName, subcategory, setSubcategory } = useStore();
@@ -115,8 +115,12 @@ const SetupPhase = ({ glbUrl, meshList, meshConfig, globalMaterial, setGlbUrl, h
 
     // When meshes are detected, reset placement
     useEffect(() => {
-        setPlacedMeshes([]);
-    }, [meshList]);
+        if (autoPlaceMeshes && meshList.length > 0) {
+            setPlacedMeshes(meshList);
+        } else {
+            setPlacedMeshes([]);
+        }
+    }, [meshList, autoPlaceMeshes]);
 
     const handlePlace = (mesh) => {
         if (placedMeshes.includes(mesh)) return;
@@ -231,16 +235,18 @@ const SetupPhase = ({ glbUrl, meshList, meshConfig, globalMaterial, setGlbUrl, h
                                 <h1 className="font-bold text-zinc-800 text-sm">Layout Mode <span className="text-zinc-300 mx-2">|</span> <span className="text-indigo-600">{placedMeshes.length} Active Parts</span></h1>
                             </div>
                         )}
-                        <div className="pointer-events-auto">
-                            <Button
-                                onClick={onLaunch}
-                                disabled={placedMeshes.length === 0 || !allPlacedWithConfig || !productName || !subcategory} // Require name and category
-                                variant="primary"
-                                className="shadow-xl"
-                            >
-                                Confirm & Start Design
-                            </Button>
-                        </div>
+                    </div>
+
+                    {/* Fixed Confirm Button - always visible above the reference preview */}
+                    <div className="absolute bottom-[300px] right-8 z-40 pointer-events-auto">
+                        <Button
+                            onClick={onLaunch}
+                            disabled={placedMeshes.length === 0 || (!autoPlaceMeshes && (!allPlacedWithConfig || !productName || !subcategory))}
+                            variant="primary"
+                            className="shadow-2xl px-8 py-3 text-base"
+                        >
+                            Confirm & Start Design →
+                        </Button>
                     </div>
 
                     {/* Drop Area */}
@@ -281,6 +287,7 @@ const SetupPhase = ({ glbUrl, meshList, meshConfig, globalMaterial, setGlbUrl, h
                                 <DynamicModel
                                     url={glbUrl}
                                     meshTextures={{}}
+                                    baseTextures={baseTextures}
                                     materialProps={globalMaterial}
                                     setMeshList={setMeshList}
                                 />

@@ -1,102 +1,134 @@
-import React, { useMemo, useEffect } from "react";
+import React, { useMemo, useEffect, useState } from "react";
 import { useGLTF, Center } from "@react-three/drei";
 import { useStore } from "../../store/useStore";
 import * as THREE from "three";
 
-const DynamicModel = React.memo(({ url, meshTextures, materialProps, showOriginal = false, setMeshList, onMeshLoaded }) => {
+const DynamicModel = React.memo(({ url, meshTextures, baseTextures, pbrTextures, materialProps, showOriginal = false, setMeshList, onMeshLoaded }) => {
     const { scene } = useGLTF(url);
-    const clonedScene = useMemo(() => scene.clone(), [scene]);
+    const [meshes, setMeshes] = useState([]);
+    
+    // We clone the scene once, but we'll manage materials and overlays separately
+    const clonedScene = useMemo(() => {
+        const s = scene.clone();
+        s.traverse(child => {
+            if (child.isMesh) {
+                // Store original material
+                if (!child.userData.originalMat) {
+                    child.userData.originalMat = child.material.clone();
+                }
+            }
+        });
+        return s;
+    }, [scene]);
+
+    const textureLoader = useMemo(() => new THREE.TextureLoader(), []);
+    const materialSettings = useStore(state => state.materialSettings);
 
     // Initial Mesh Discovery
     useEffect(() => {
-        const meshes = [];
+        const meshNames = [];
         clonedScene.traverse((child) => {
             if (child.isMesh) {
-                meshes.push(child.name);
-                // Store original material for Show Original toggle
-                if (!child.userData.originalMat) child.userData.originalMat = child.material.clone();
+                meshNames.push(child.name);
             }
         });
-        setMeshList((prev) => (prev.length === meshes.length ? prev : [...new Set(meshes)]));
+        setMeshes(meshNames);
+        setMeshList((prev) => (prev.length === meshNames.length ? prev : [...new Set(meshNames)]));
         if (onMeshLoaded) onMeshLoaded(clonedScene);
     }, [clonedScene, setMeshList, onMeshLoaded]);
 
-    // ----- OVERLAY MESH MANAGEMENT -----
-    // For each mesh with a sticker texture, we keep the ORIGINAL material untouched
-    // and add a transparent child mesh that renders only the sticker on top.
-    const materialSettings = useStore(state => state.materialSettings);
-
+    // Update base materials
     useEffect(() => {
         clonedScene.traverse((child) => {
             if (!child.isMesh) return;
 
-            // 1. Always restore original material (so base texture never changes)
-            if (child.userData.originalMat && !showOriginal) {
-                // Restore to original if we placed an overlay on it previously
-                child.material = child.userData.originalMat.clone();
-                child.userData.isCloned = true;
-            }
-
-            // ShowOriginal mode: strict restore, no overlays
             if (showOriginal) {
-                if (child.userData.originalMat) {
-                    child.material = child.userData.originalMat.clone();
-                    child.userData.isCloned = false;
-                }
-                // Remove any overlay child
-                const oldOverlay = child.getObjectByName(`__overlay__${child.name}`);
-                if (oldOverlay) child.remove(oldOverlay);
+                child.material = child.userData.originalMat;
                 return;
             }
 
-            // 2. Apply admin material settings to the BASE mesh (roughness, metalness etc.)
+            // Create or update a working material
+            if (!child.userData.workingMat) {
+                child.userData.workingMat = child.userData.originalMat.clone();
+            }
+            child.material = child.userData.workingMat;
+
             const mat = child.material;
             mat.side = THREE.DoubleSide;
             mat.roughness = materialSettings.roughness;
             mat.metalness = materialSettings.metalness;
-            mat.sheen = materialSettings.sheen;
-            mat.sheenRoughness = materialSettings.sheenRoughness;
-            mat.flatShading = false;
-            mat.clearcoat = 0;
+            
             if (materialProps.color) mat.color.set(materialProps.color);
-            mat.needsUpdate = true;
 
-            // 3. Sticker Overlay
-            const stickerTex = meshTextures[child.name];
-            const existingOverlay = child.getObjectByName(`__overlay__${child.name}`);
-
-            if (stickerTex) {
-                if (existingOverlay) {
-                    // Update texture on existing overlay
-                    existingOverlay.material.map = stickerTex;
-                    existingOverlay.material.needsUpdate = true;
-                } else {
-                    // Create a new transparent overlay mesh using the same geometry
-                    const overlayMat = new THREE.MeshBasicMaterial({
-                        map: stickerTex,
-                        transparent: true,
-                        depthWrite: false,
-                        blending: THREE.NormalBlending,
-                        polygonOffset: true,
-                        polygonOffsetFactor: -1,
-                        polygonOffsetUnits: -1,
-                        side: THREE.DoubleSide,
-                    });
-                    const overlayMesh = new THREE.Mesh(child.geometry, overlayMat);
-                    overlayMesh.name = `__overlay__${child.name}`;
-                    overlayMesh.renderOrder = 1;
-                    child.add(overlayMesh);
-                }
+            // Apply base textures from variants
+            if (baseTextures && baseTextures[child.name]) {
+                mat.map = baseTextures[child.name];
             } else {
-                // No sticker — remove overlay if it exists
-                if (existingOverlay) child.remove(existingOverlay);
+                mat.map = child.userData.originalMat.map;
             }
-        });
-    }, [clonedScene, meshTextures, materialProps, materialSettings, showOriginal]);
 
+            // PBR
+            if (pbrTextures) {
+                if (pbrTextures.normal) {
+                    const tex = textureLoader.load(pbrTextures.normal);
+                    tex.flipY = false;
+                    mat.normalMap = tex;
+                }
+                if (pbrTextures.roughness) {
+                    const tex = textureLoader.load(pbrTextures.roughness);
+                    tex.flipY = false;
+                    mat.roughnessMap = tex;
+                }
+                if (pbrTextures.metalness) {
+                    const tex = textureLoader.load(pbrTextures.metalness);
+                    tex.flipY = false;
+                    mat.metalnessMap = tex;
+                }
+                if (pbrTextures.ao) {
+                    const tex = textureLoader.load(pbrTextures.ao);
+                    tex.flipY = false;
+                    mat.aoMap = tex;
+                }
+            }
+
+            mat.needsUpdate = true;
+        });
+    }, [clonedScene, baseTextures, pbrTextures, materialProps, materialSettings, showOriginal, textureLoader]);
+
+    // Render the scene and portals for overlays
     return (
         <Center>
             <primitive object={clonedScene} />
+            
+            {/* Render Overlays as distinct React components for better sync */}
+            {!showOriginal && meshes.map(meshName => {
+                const stickerTex = meshTextures[meshName];
+                if (!stickerTex) return null;
+
+                const parentMesh = clonedScene.getObjectByName(meshName);
+                if (!parentMesh) return null;
+
+                return (
+                    <mesh 
+                        key={`overlay-${meshName}`}
+                        geometry={parentMesh.geometry}
+                        position={parentMesh.getWorldPosition(new THREE.Vector3())}
+                        quaternion={parentMesh.getWorldQuaternion(new THREE.Quaternion())}
+                        scale={parentMesh.getWorldScale(new THREE.Vector3())}
+                        renderOrder={10}
+                    >
+                        <meshBasicMaterial 
+                            map={stickerTex} 
+                            transparent={true} 
+                            depthWrite={false}
+                            polygonOffset={true}
+                            polygonOffsetFactor={-4}
+                            polygonOffsetUnits={-4}
+                            side={THREE.DoubleSide}
+                        />
+                    </mesh>
+                );
+            })}
         </Center>
     );
 });
