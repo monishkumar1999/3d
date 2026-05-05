@@ -179,7 +179,7 @@ export const useProductConfigStore = create((set, get) => ({
                     glbUrl: product.base_model_url,
                     fileName: product.name,
                     createdProductId: product.id,
-                    _pendingConfig: product.configuration,
+                    _pendingVariants: product.variants,
                     isSaving: false
                 });
             } else {
@@ -222,44 +222,58 @@ export const useProductConfigStore = create((set, get) => ({
             pbrSets: nextPbrSets,
         });
 
-        // Apply pending config if exists
-        if (state._pendingConfig) {
-            const config = state._pendingConfig;
-            set({ _pendingConfig: null });
+        // Apply pending variants if they exist
+        if (state._pendingVariants && state._pendingVariants.length > 0) {
+            const variants = state._pendingVariants;
+            set({ _pendingVariants: null });
 
             const newPbrSets = { ...nextPbrSets };
             
-            for (const meshConf of (config.meshes || [])) {
-                // Find matching mesh in discovered meshes
-                const actualMesh = meshes.find(m => m.label === meshConf.name || m.id === meshConf.name);
-                if (!actualMesh) continue;
+            // First, ensure all meshes have the correct number of sets (one per variant)
+            meshes.forEach(m => {
+                newPbrSets[m.id] = {
+                    activeSetId: null,
+                    sets: variants.map((v, idx) => ({
+                        id: idx + 1,
+                        name: v.name || `Set ${idx + 1}`,
+                        maps: {},
+                        settings: { ...DEFAULT_PBR_SETTINGS }
+                    }))
+                };
+                if (newPbrSets[m.id].sets.length > 0) {
+                    newPbrSets[m.id].activeSetId = newPbrSets[m.id].sets[0].id;
+                }
+            });
 
-                const sets = await Promise.all((meshConf.sets || []).map(async (setConf, idx) => {
-                    const maps = {};
+            // Now, populate the maps from the textures
+            for (let vIdx = 0; vIdx < variants.length; vIdx++) {
+                const variant = variants[vIdx];
+                const setId = vIdx + 1;
+
+                for (const texture of (variant.textures || [])) {
+                    // Find matching mesh by meshName
+                    const actualMesh = meshes.find(m => m.name === texture.meshName || m.label === texture.meshName);
+                    if (!actualMesh) continue;
+
+                    const pbrSet = newPbrSets[actualMesh.id].sets[vIdx];
+                    if (!pbrSet) continue;
+
+                    // Load textures for each slot
                     for (const slot of PBR_SLOTS) {
-                        const url = setConf.maps?.[slot.key];
+                        const url = texture[slot.key];
                         if (url) {
-                            maps[slot.key] = await loadTextureFromUrl(url, slot.colorSpace);
+                            pbrSet.maps[slot.key] = await loadTextureFromUrl(url, slot.colorSpace);
                         }
                     }
-                    return {
-                        id: idx + 1,
-                        name: setConf.name || `Set ${idx + 1}`,
-                        maps,
-                        settings: {
-                            textureRepeat: setConf.textureRepeat || 1,
-                            normalIntensity: setConf.normalIntensity || 1,
-                        }
-                    };
-                }));
 
-                if (sets.length > 0) {
-                    newPbrSets[actualMesh.id] = {
-                        activeSetId: sets[0].id,
-                        sets
+                    // Apply settings
+                    pbrSet.settings = {
+                        textureRepeat: parseFloat(texture.textureRepeat) || 1,
+                        normalIntensity: parseFloat(texture.normalIntensity) || 1,
                     };
                 }
             }
+            
             set({ pbrSets: newPbrSets });
         }
     },
@@ -341,10 +355,10 @@ export const useProductConfigStore = create((set, get) => ({
             const nextPbrSets = { ...state.pbrSets };
 
             meshes.forEach(tId => {
-                const mState = normalizePbrSetState(nextPbrSets[tId]);
+                const mState = normalizePbrSetState(nextPbrSets[tId.id]);
                 const targetSet = mState.sets[selectedIndex];
                 if (targetSet) {
-                    nextPbrSets[tId] = {
+                    nextPbrSets[tId.id] = {
                         ...mState,
                         sets: mState.sets.map(s => s.id === targetSet.id ? { ...s, ...patch } : s)
                     };
@@ -369,7 +383,7 @@ export const useProductConfigStore = create((set, get) => ({
             const nextPbrSets = { ...state.pbrSets };
 
             meshes.forEach(tId => {
-                const mState = normalizePbrSetState(nextPbrSets[tId]);
+                const mState = normalizePbrSetState(nextPbrSets[tId.id]);
                 if (mState.sets.length <= 1) return;
 
                 const targetSet = mState.sets[selectedIndex];
@@ -378,7 +392,7 @@ export const useProductConfigStore = create((set, get) => ({
                 const sets = mState.sets.filter((s) => s.id !== targetSet.id);
                 const activeSetId = mState.activeSetId === targetSet.id ? sets[0].id : mState.activeSetId;
 
-                nextPbrSets[tId] = { ...mState, activeSetId, sets };
+                nextPbrSets[tId.id] = { ...mState, activeSetId, sets };
             });
 
             return { pbrSets: nextPbrSets };
@@ -491,7 +505,7 @@ export const useProductConfigStore = create((set, get) => ({
      * After a successful first-time create the returned product_id is stored
      * in `createdProductId` so subsequent saves become updates.
      */
-    saveConfig: async ({ productId, productName } = {}) => {
+    saveConfig: async ({ productId, productName, variantName } = {}) => {
         const { glbFile, meshes, pbrSets } = get();
         const isCreate = !productId;
 
@@ -515,6 +529,9 @@ export const useProductConfigStore = create((set, get) => ({
             // Backend uses product_id (update) OR product_name (create) to decide
             if (productId)              fd.append("product_id",   productId);
             if (isCreate && productName) fd.append("product_name", productName.trim());
+
+            // Variant name — optional override for the variant naming
+            if (variantName) fd.append("variant_name", variantName);
 
             // Build mesh + PBR texture entries
             const blobPromises = [];

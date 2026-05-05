@@ -23,11 +23,13 @@ const CAMERA = { position: [0, 0, 4.5], fov: 45 };
 const GL_OPTS = { antialias: true, preserveDrawingBuffer: false };
 
 export default function GlbMeshInspector() {
-    const { productId: urlProductId } = useParams();
+    const { productId: urlProductId, variantName: urlVariantName } = useParams();
     const navigate = useNavigate();
 
     // Product name — only used when there's no URL productId (first-time create)
     const [productName, setProductName] = useState("");
+    // Variant name — pre-filled from URL param if given
+    const [variantName, setVariantName] = useState(urlVariantName || "");
 
     // Store slices
     const glbUrl = useProductConfigStore(s => s.glbUrl);
@@ -56,12 +58,12 @@ export default function GlbMeshInspector() {
     const handleSave = useCallback(() => {
         if (effectiveProductId) {
             // UPDATE — product already exists
-            saveConfig({ productId: effectiveProductId });
+            saveConfig({ productId: effectiveProductId, variantName: variantName.trim() || undefined });
         } else {
             // CREATE — first-time save, send product_name
-            saveConfig({ productName });
+            saveConfig({ productName, variantName: variantName.trim() || undefined });
         }
-    }, [saveConfig, effectiveProductId, productName]);
+    }, [saveConfig, effectiveProductId, productName, variantName]);
 
     useEffect(() => {
         fetchProductNames();
@@ -174,6 +176,23 @@ export default function GlbMeshInspector() {
                             Product linked
                         </div>
                     )}
+
+                    {/* ── Variant name input ── */}
+                    <div className="flex items-center gap-2 px-3 h-9 rounded-xl
+                                    border border-zinc-200 bg-white shadow-sm
+                                    focus-within:border-violet-400 focus-within:ring-2
+                                    focus-within:ring-violet-100 transition-all">
+                        <Tag size={11} className="text-violet-500 flex-shrink-0" />
+                        <input
+                            type="text"
+                            placeholder="Variant name…"
+                            value={variantName}
+                            onChange={(e) => setVariantName(e.target.value)}
+                            className="bg-transparent text-[11px] font-bold text-zinc-700
+                                       outline-none w-32
+                                       placeholder:text-zinc-300"
+                        />
+                    </div>
 
                     {/* File badge */}
                     {fileName && (

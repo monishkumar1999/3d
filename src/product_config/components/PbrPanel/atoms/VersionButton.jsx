@@ -2,13 +2,14 @@ import { memo } from "react";
 import { Package } from "lucide-react";
 import { getSetName } from "../pbrUtils";
 
-const VersionButton = memo(({ pbrSet, index, isSelected, onSelect }) => {
+const VersionButton = memo(({ pbrSet, index, isSelected, onSelect, onDoubleClick }) => {
     const loadedCount = Object.values(pbrSet.maps ?? {}).filter(Boolean).length;
 
     return (
         <button
             type="button"
             onClick={onSelect}
+            onDoubleClick={onDoubleClick}
             className={`min-w-0 flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-black transition-all
                         ${isSelected
                     ? "border-indigo-200 bg-indigo-50 text-indigo-800 shadow-sm"

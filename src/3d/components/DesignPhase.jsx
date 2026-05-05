@@ -226,7 +226,7 @@ const DesignPhase = ({ glbUrl, meshConfig, meshTextures, baseTextures, globalMat
                                 <input type="file" accept="image/*" onChange={(e) => { if (e.target.files[0]) setActiveStickerUrl(URL.createObjectURL(e.target.files[0])); }} className="hidden" />
                             </label>
 
-                            <button 
+                            <button
                                 onClick={() => setActiveStickerUrl('__TEXT_NODE__')}
                                 className="flex flex-col items-center justify-center h-28 border-2 border-dashed border-zinc-200 rounded-2xl hover:border-indigo-400 hover:bg-indigo-50/50 transition-all group bg-zinc-50/50"
                             >
@@ -266,7 +266,7 @@ const DesignPhase = ({ glbUrl, meshConfig, meshTextures, baseTextures, globalMat
                                 <Save size={14} />
                             </button>
                         </div>
-                        
+
                         <div className="bg-white border border-zinc-200 rounded-2xl p-4 shadow-sm space-y-5">
                             {/* Environment Preset */}
                             <div className="space-y-2">
@@ -356,10 +356,10 @@ const DesignPhase = ({ glbUrl, meshConfig, meshTextures, baseTextures, globalMat
                         <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
                         <h1 className="font-bold text-zinc-800 text-xs">Editor Live <span className="text-zinc-300 mx-2">|</span> <span className="text-indigo-600">{productName || 'Untitled Project'}</span></h1>
                     </div>
-                    
+
                     {/* View Controls */}
                     <div className="flex gap-2 pointer-events-auto">
-                        <button 
+                        <button
                             onClick={() => setShowWireframe(!showWireframe)}
                             className={`p-2 rounded-xl border transition-all ${showWireframe ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-white text-zinc-400 border-zinc-200 hover:bg-zinc-50'}`}
                             title="Toggle UV Wireframe"
