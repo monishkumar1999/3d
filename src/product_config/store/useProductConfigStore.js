@@ -9,7 +9,8 @@
  */
 import { create } from "zustand";
 import * as THREE from "three";
-import { saveProductConfig, getProductNames, getProductDetails } from "../../api/productConfigApi";
+import { saveProductConfig, getProductNames, getProductDetails, deleteVariant } from "../../api/productConfigApi";
+
 
 // PBR slot definitions shared with UI components via this file.
 export const PBR_SLOTS = [
@@ -234,8 +235,9 @@ export const useProductConfigStore = create((set, get) => ({
                 newPbrSets[m.id] = {
                     activeSetId: null,
                     sets: variants.map((v, idx) => ({
-                        id: idx + 1,
+                        id: v.id || (idx + 1),
                         name: v.name || `Set ${idx + 1}`,
+
                         maps: {},
                         settings: { ...DEFAULT_PBR_SETTINGS }
                     }))
@@ -369,10 +371,21 @@ export const useProductConfigStore = create((set, get) => ({
         });
     },
 
-    removePbrSet: (meshId, setId) => {
+    removePbrSet: async (meshId, setId) => {
         const { meshes } = get();
         const sourceMeshId = meshId || (meshes[0]?.id);
         if (!sourceMeshId || !setId) return;
+
+        // If it's a real DB ID (not our local string format), call API
+        const isLocal = typeof setId === "string" && setId.startsWith("pbr-set-");
+        if (!isLocal) {
+            try {
+                await deleteVariant(setId);
+            } catch (err) {
+                console.error("Failed to delete variant from server:", err);
+                // Continue with local removal anyway, or handle error as needed
+            }
+        }
 
         set((state) => {
             const currentMeshState = normalizePbrSetState(state.pbrSets[sourceMeshId]);
@@ -398,6 +411,7 @@ export const useProductConfigStore = create((set, get) => ({
             return { pbrSets: nextPbrSets };
         });
     },
+
 
     applyMap: async (meshId, setId, slot, file) => {
         if (!meshId || !slot) return;

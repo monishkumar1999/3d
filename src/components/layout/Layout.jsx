@@ -13,8 +13,10 @@ import {
   Box,
   Palette,
   Layers,
-  GitMerge
+  GitMerge,
+  FileCode
 } from "lucide-react";
+
 
 // Sidebar configuration
 const SIDEBAR_ITEMS = [
@@ -28,7 +30,9 @@ const SIDEBAR_ITEMS = [
    { icon: Settings, label: "Product Configuration", href: "/product-config" },
    { icon: Box, label: "3D Model List", href: "/product-config-list" },
    { icon: Layers, label: "Mesh Configuration", href: "/mesh-config" },
+   { icon: FileCode, label: "SVG Converter", href: "/svg-converter" },
 ];
+
 
 const Sidebar = ({ isOpen, toggleSidebar }) => {
   return (

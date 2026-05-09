@@ -91,7 +91,7 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
             const newText = {
                 id: 'text_' + Date.now().toString(),
                 text: 'DOUBLE CLICK TO EDIT',
-                x: maskImg ? maskImg.naturalWidth / 2 - 100 : 500, 
+                x: maskImg ? maskImg.naturalWidth / 2 - 100 : 500,
                 y: maskImg ? maskImg.naturalHeight / 2 - 50 : 500,
                 fontSize: 80, // Larger default for high-res stage
                 fill: '#ffffff',
@@ -138,7 +138,7 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
 
         // 1. Hide unwanted elements for clean export
         if (trRef.current) trRef.current.nodes([]);
-        
+
         const layer = stageRef.current.getLayers()[0];
         if (!layer) return;
 
@@ -149,7 +149,7 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
         layer.draw();
 
         // 2. Export full natural size
-        const uri = stageRef.current.toDataURL({ 
+        const uri = stageRef.current.toDataURL({
             pixelRatio: 1,
             x: 0,
             y: 0,
@@ -222,13 +222,13 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
             {/* Canvas Container with CSS Scaling */}
             <div
                 className={`rounded-lg overflow-hidden transition-all duration-300 bg-white border border-zinc-200 ${isSelected ? 'ring-4 ring-indigo-500 shadow-xl scale-[1.02]' : 'shadow-sm'}`}
-                style={{ 
-                    width: displayW, 
+                style={{
+                    width: displayW,
                     height: displayH,
                     position: 'relative'
                 }}
             >
-                <div 
+                <div
                     ref={uiContainerRef}
                     style={{
                         transform: `scale(${uiScale})`,
@@ -247,104 +247,104 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
                         onMouseUp={() => triggerExport()}
                     >
                         <Layer>
-                        {/* Transparent base by default */}
+                            {/* Transparent base by default */}
 
-                        {/* UV Mesh outline */}
-                        {wireframeImg && (
-                            <KImage
-                                name="wireframe" // Use name instead of id for class-like selection
-                                image={wireframeImg}
-                                width={wireframeImg.naturalWidth}
-                                height={wireframeImg.naturalHeight}
-                                listening={false}
-                                opacity={1}
-                                shadowColor="#71717a"
-                                shadowBlur={3}
-                                shadowOffsetX={0}
-                                shadowOffsetY={0}
-                                shadowOpacity={0.6}
+                            {/* UV Mesh outline */}
+                            {wireframeImg && (
+                                <KImage
+                                    name="wireframe" // Use name instead of id for class-like selection
+                                    image={wireframeImg}
+                                    width={wireframeImg.naturalWidth}
+                                    height={wireframeImg.naturalHeight}
+                                    listening={false}
+                                    opacity={1}
+                                    shadowColor="#71717a"
+                                    shadowBlur={3}
+                                    shadowOffsetX={0}
+                                    shadowOffsetY={0}
+                                    shadowOpacity={0.6}
+                                />
+                            )}
+
+                            {/* Stickers */}
+                            {stickers.map((s) => (
+                                <KImage
+                                    key={s.id}
+                                    id={s.id}
+                                    image={s.image}
+                                    x={s.x} y={s.y}
+                                    width={s.width} height={s.height}
+                                    opacity={s.opacity ?? 1}
+                                    rotation={s.rotation}
+                                    draggable
+                                    onClick={() => setSelectedId(s.id)}
+                                    onDragMove={() => triggerExport()}
+                                    onDragEnd={(e) => {
+                                        const id = e.target.id();
+                                        setStickers(prev => prev.map(st =>
+                                            st.id === id ? { ...st, x: e.target.x(), y: e.target.y() } : st
+                                        ));
+                                        triggerExport();
+                                    }}
+                                    onTransformEnd={(e) => {
+                                        const node = e.target;
+                                        const id = node.id();
+                                        const newW = Math.max(5, node.width() * node.scaleX());
+                                        const newH = Math.max(5, node.height() * node.scaleY());
+                                        node.scaleX(1); node.scaleY(1);
+                                        setStickers(prev => prev.map(st =>
+                                            st.id === id ? { ...st, x: node.x(), y: node.y(), width: newW, height: newH, rotation: node.rotation() } : st
+                                        ));
+                                        setTimeout(() => triggerExport(), 50);
+                                    }}
+                                />
+                            ))}
+
+                            {/* Text Nodes */}
+                            {textNodes.map((t) => (
+                                <Text
+                                    key={t.id}
+                                    id={t.id}
+                                    text={t.text}
+                                    x={t.x} y={t.y}
+                                    fontSize={t.fontSize}
+                                    fill={t.fill}
+                                    fontFamily={t.fontFamily}
+                                    opacity={t.opacity ?? 1}
+                                    rotation={t.rotation}
+                                    draggable
+                                    fontStyle="bold"
+                                    onClick={() => setSelectedId(t.id)}
+                                    onDragMove={() => triggerExport()}
+                                    onDragEnd={(e) => {
+                                        const id = e.target.id();
+                                        setTextNodes(prev => prev.map(tn =>
+                                            tn.id === id ? { ...tn, x: e.target.x(), y: e.target.y() } : tn
+                                        ));
+                                        triggerExport();
+                                    }}
+                                    onTransformEnd={(e) => {
+                                        const node = e.target;
+                                        const id = node.id();
+                                        const newSize = node.fontSize() * node.scaleX();
+                                        node.scaleX(1); node.scaleY(1);
+                                        setTextNodes(prev => prev.map(tn =>
+                                            tn.id === id ? { ...tn, x: node.x(), y: node.y(), fontSize: newSize, rotation: node.rotation() } : tn
+                                        ));
+                                        setTimeout(() => triggerExport(), 50);
+                                    }}
+                                />
+                            ))}
+
+                            <Transformer
+                                ref={trRef}
+                                borderStroke="#4f46e5"
+                                anchorStroke="#4f46e5"
+                                anchorFill="#ffffff"
+                                anchorSize={8}
+                                borderDash={[2, 2]}
                             />
-                        )}
-
-                        {/* Stickers */}
-                        {stickers.map((s) => (
-                            <KImage
-                                key={s.id}
-                                id={s.id}
-                                image={s.image}
-                                x={s.x} y={s.y}
-                                width={s.width} height={s.height}
-                                opacity={s.opacity ?? 1}
-                                rotation={s.rotation}
-                                draggable
-                                onClick={() => setSelectedId(s.id)}
-                                onDragMove={() => triggerExport()}
-                                onDragEnd={(e) => {
-                                    const id = e.target.id();
-                                    setStickers(prev => prev.map(st =>
-                                        st.id === id ? { ...st, x: e.target.x(), y: e.target.y() } : st
-                                    ));
-                                    triggerExport();
-                                }}
-                                onTransformEnd={(e) => {
-                                    const node = e.target;
-                                    const id = node.id();
-                                    const newW = Math.max(5, node.width() * node.scaleX());
-                                    const newH = Math.max(5, node.height() * node.scaleY());
-                                    node.scaleX(1); node.scaleY(1);
-                                    setStickers(prev => prev.map(st =>
-                                        st.id === id ? { ...st, x: node.x(), y: node.y(), width: newW, height: newH, rotation: node.rotation() } : st
-                                    ));
-                                    setTimeout(() => triggerExport(), 50);
-                                }}
-                            />
-                        ))}
-
-                        {/* Text Nodes */}
-                        {textNodes.map((t) => (
-                            <Text
-                                key={t.id}
-                                id={t.id}
-                                text={t.text}
-                                x={t.x} y={t.y}
-                                fontSize={t.fontSize}
-                                fill={t.fill}
-                                fontFamily={t.fontFamily}
-                                opacity={t.opacity ?? 1}
-                                rotation={t.rotation}
-                                draggable
-                                fontStyle="bold"
-                                onClick={() => setSelectedId(t.id)}
-                                onDragMove={() => triggerExport()}
-                                onDragEnd={(e) => {
-                                    const id = e.target.id();
-                                    setTextNodes(prev => prev.map(tn =>
-                                        tn.id === id ? { ...tn, x: e.target.x(), y: e.target.y() } : tn
-                                    ));
-                                    triggerExport();
-                                }}
-                                onTransformEnd={(e) => {
-                                    const node = e.target;
-                                    const id = node.id();
-                                    const newSize = node.fontSize() * node.scaleX();
-                                    node.scaleX(1); node.scaleY(1);
-                                    setTextNodes(prev => prev.map(tn =>
-                                        tn.id === id ? { ...tn, x: node.x(), y: node.y(), fontSize: newSize, rotation: node.rotation() } : tn
-                                    ));
-                                    setTimeout(() => triggerExport(), 50);
-                                }}
-                            />
-                        ))}
-
-                        <Transformer
-                            ref={trRef}
-                            borderStroke="#4f46e5"
-                            anchorStroke="#4f46e5"
-                            anchorFill="#ffffff"
-                            anchorSize={8}
-                            borderDash={[2, 2]}
-                        />
-                    </Layer>
+                        </Layer>
                     </Stage>
                 </div>
             </div>
@@ -356,15 +356,15 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
                     if (!node) return null;
                     const box = node.getClientRect();
                     // Multiply logical coordinates by uiScale to get screen-relative offset
-                    const pos = { 
-                        top: box.y * uiScale, 
-                        left: (box.x + box.width / 2) * uiScale 
+                    const pos = {
+                        top: box.y * uiScale,
+                        left: (box.x + box.width / 2) * uiScale
                     };
-                    
+
                     if (selectedId.startsWith('text_')) {
                         const textNode = textNodes.find(t => t.id === selectedId);
                         return (
-                            <FloatingTextToolbar 
+                            <FloatingTextToolbar
                                 sticker={textNode}
                                 containerRef={uiContainerRef}
                                 position={pos}
@@ -388,7 +388,7 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
                                         const idx = prev.findIndex(t => t.id === selectedId);
                                         if (idx === prev.length - 1) return prev;
                                         const next = [...prev];
-                                        [next[idx], next[idx+1]] = [next[idx+1], next[idx]];
+                                        [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
                                         return next;
                                     });
                                 }}
@@ -397,7 +397,7 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
                                         const idx = prev.findIndex(t => t.id === selectedId);
                                         if (idx === 0) return prev;
                                         const next = [...prev];
-                                        [next[idx], next[idx-1]] = [next[idx-1], next[idx]];
+                                        [next[idx], next[idx - 1]] = [next[idx - 1], next[idx]];
                                         return next;
                                     });
                                 }}
@@ -406,7 +406,7 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
                     } else if (selectedId.startsWith('sticker_')) {
                         const sticker = stickers.find(s => s.id === selectedId);
                         return (
-                            <FloatingImageToolbar 
+                            <FloatingImageToolbar
                                 sticker={sticker}
                                 containerRef={uiContainerRef}
                                 position={pos}
@@ -430,7 +430,7 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
                                         const idx = prev.findIndex(s => s.id === selectedId);
                                         if (idx === prev.length - 1) return prev;
                                         const next = [...prev];
-                                        [next[idx], next[idx+1]] = [next[idx+1], next[idx]];
+                                        [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
                                         return next;
                                     });
                                 }}
@@ -439,7 +439,7 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
                                         const idx = prev.findIndex(s => s.id === selectedId);
                                         if (idx === 0) return prev;
                                         const next = [...prev];
-                                        [next[idx], next[idx-1]] = [next[idx-1], next[idx]];
+                                        [next[idx], next[idx - 1]] = [next[idx - 1], next[idx]];
                                         return next;
                                     });
                                 }}

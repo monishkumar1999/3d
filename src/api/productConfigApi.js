@@ -43,3 +43,11 @@ export async function uploadMeshUv(formData) {
         headers: { 'Content-Type': 'multipart/form-data' },
     });
 }
+/**
+ * deleteVariant
+ * Deletes a specific product variant by ID.
+ * @param {number|string} id - The ID of the variant to delete.
+ */
+export async function deleteVariant(id) {
+    return api.delete(`/product/variant/${id}`);
+}

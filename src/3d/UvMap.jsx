@@ -215,6 +215,7 @@ export default function ProTShirtStudio() {
         />
       ) : (
         <DesignPhase
+          productId={productId}
           glbUrl={glbUrl}
           meshConfig={meshConfig}
           meshTextures={meshTextures}

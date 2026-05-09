@@ -3,7 +3,7 @@ import { useGLTF, Center } from "@react-three/drei";
 import { useStore } from "../../store/useStore";
 import * as THREE from "three";
 
-const DynamicModel = React.memo(({ url, meshTextures, baseTextures, pbrTextures, materialProps, showOriginal = false, setMeshList, onMeshLoaded }) => {
+const DynamicModel = React.memo(({ url, meshTextures, baseTextures, pbrTextures, meshMaterials = {}, materialProps, showOriginal = false, setMeshList, onMeshLoaded }) => {
     const { scene } = useGLTF(url);
     const [meshes, setMeshes] = useState([]);
     
@@ -49,14 +49,35 @@ const DynamicModel = React.memo(({ url, meshTextures, baseTextures, pbrTextures,
 
             // Create or update a working material
             if (!child.userData.workingMat) {
-                child.userData.workingMat = child.userData.originalMat.clone();
+                const orig = child.userData.originalMat;
+                const newMat = new THREE.MeshPhysicalMaterial();
+                
+                // Manually copy only what we need to avoid missing Vector2 properties error
+                if (orig.color) newMat.color.copy(orig.color);
+                if (orig.map) newMat.map = orig.map;
+                if (orig.normalMap) newMat.normalMap = orig.normalMap;
+                if (orig.roughnessMap) newMat.roughnessMap = orig.roughnessMap;
+                if (orig.metalnessMap) newMat.metalnessMap = orig.metalnessMap;
+                newMat.side = orig.side !== undefined ? orig.side : THREE.DoubleSide;
+                newMat.transparent = orig.transparent;
+                newMat.opacity = orig.opacity;
+                
+                child.userData.workingMat = newMat;
             }
             child.material = child.userData.workingMat;
 
             const mat = child.material;
             mat.side = THREE.DoubleSide;
-            mat.roughness = materialSettings.roughness;
-            mat.metalness = materialSettings.metalness;
+            const meshMat = meshMaterials[child.name] || {};
+            mat.roughness = meshMat.roughness !== undefined ? meshMat.roughness : (materialSettings.roughness !== undefined ? materialSettings.roughness : 0.5);
+            mat.metalness = meshMat.metalness !== undefined ? meshMat.metalness : (materialSettings.metalness !== undefined ? materialSettings.metalness : 0);
+            mat.transmission = meshMat.transmission !== undefined ? meshMat.transmission : 0;
+            mat.ior = 1.5;
+            mat.thickness = 0.5;
+            
+            if (mat.transmission > 0) {
+                mat.transparent = true;
+            }
             
             if (materialProps.color) mat.color.set(materialProps.color);
 
@@ -93,7 +114,7 @@ const DynamicModel = React.memo(({ url, meshTextures, baseTextures, pbrTextures,
 
             mat.needsUpdate = true;
         });
-    }, [clonedScene, baseTextures, pbrTextures, materialProps, materialSettings, showOriginal, textureLoader]);
+    }, [clonedScene, baseTextures, pbrTextures, meshMaterials, materialProps, materialSettings, showOriginal, textureLoader]);
 
     // Render the scene and portals for overlays
     return (
@@ -108,6 +129,11 @@ const DynamicModel = React.memo(({ url, meshTextures, baseTextures, pbrTextures,
                 const parentMesh = clonedScene.getObjectByName(meshName);
                 if (!parentMesh) return null;
 
+                const meshMat = meshMaterials[meshName] || {};
+                const currentRoughness = meshMat.roughness !== undefined ? meshMat.roughness : (materialSettings.roughness !== undefined ? materialSettings.roughness : 0.5);
+                const currentMetalness = meshMat.metalness !== undefined ? meshMat.metalness : (materialSettings.metalness !== undefined ? materialSettings.metalness : 0);
+                const currentTransmission = meshMat.transmission !== undefined ? meshMat.transmission : 0;
+
                 return (
                     <mesh 
                         key={`overlay-${meshName}`}
@@ -117,7 +143,7 @@ const DynamicModel = React.memo(({ url, meshTextures, baseTextures, pbrTextures,
                         scale={parentMesh.getWorldScale(new THREE.Vector3())}
                         renderOrder={10}
                     >
-                        <meshBasicMaterial 
+                        <meshPhysicalMaterial 
                             map={stickerTex} 
                             transparent={true} 
                             depthWrite={false}
@@ -125,6 +151,11 @@ const DynamicModel = React.memo(({ url, meshTextures, baseTextures, pbrTextures,
                             polygonOffsetFactor={-4}
                             polygonOffsetUnits={-4}
                             side={THREE.DoubleSide}
+                            roughness={currentRoughness}
+                            metalness={currentMetalness}
+                            transmission={currentTransmission}
+                            ior={1.5}
+                            thickness={0.5}
                         />
                     </mesh>
                 );
