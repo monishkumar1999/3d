@@ -1,6 +1,5 @@
 import { memo, useState, useRef, useEffect } from "react";
-import { Plus, Package, Pencil, Check, Trash2 } from "lucide-react";
-
+import { Plus, Package, Pencil, Check } from "lucide-react";
 import { useProductConfigStore } from "../../../store/useProductConfigStore";
 import VersionButton from "../atoms/VersionButton";
 import { getSetName } from "../pbrUtils";
@@ -9,8 +8,6 @@ const VersionSection = memo(({ sets, activeSetId }) => {
     const addPbrSet = useProductConfigStore((state) => state.addPbrSet);
     const selectPbrSet = useProductConfigStore((state) => state.selectPbrSet);
     const updatePbrSet = useProductConfigStore((state) => state.updatePbrSet);
-    const removePbrSet = useProductConfigStore((state) => state.removePbrSet);
-
 
     // Inline rename state
     const [editingSetId, setEditingSetId] = useState(null);
@@ -48,17 +45,6 @@ const VersionSection = memo(({ sets, activeSetId }) => {
         if (e.key === "Escape") cancelRename();
     };
 
-    const handleDelete = (setId) => {
-        if (sets.length <= 1) {
-            alert("You cannot delete the last version.");
-            return;
-        }
-        if (window.confirm("Are you sure you want to delete this version?")) {
-            removePbrSet(null, setId);
-        }
-    };
-
-
     // Find the active set's index for display
     const activeSet = sets.find(s => s.id === activeSetId);
     const activeIndex = sets.findIndex(s => s.id === activeSetId);
@@ -68,9 +54,8 @@ const VersionSection = memo(({ sets, activeSetId }) => {
             <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-1.5">
                     <Package size={11} className="text-indigo-500" />
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">Design Versions</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">Design Versions </span>
                 </div>
-
                 <button
                     type="button"
                     onClick={() => addPbrSet(null)}
@@ -123,32 +108,18 @@ const VersionSection = memo(({ sets, activeSetId }) => {
                             </button>
                         </div>
                     ) : (
-                        <div className="flex items-center gap-1.5 w-full">
-                            <button
-                                type="button"
-                                onClick={() => startRename(activeSet, activeIndex)}
-                                className="flex-1 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg 
-                                           border border-zinc-200 bg-white text-[10px] font-bold 
-                                           text-zinc-500 hover:text-indigo-600 hover:border-indigo-200 
-                                           hover:bg-indigo-50 transition-all"
-                            >
-                                <Pencil size={10} className="flex-shrink-0" />
-                                <span className="truncate">{getSetName(activeSet, activeIndex)}</span>
-                                <span className="text-zinc-300 ml-auto text-[9px]">click to rename</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => handleDelete(activeSet.id)}
-                                className="flex items-center justify-center w-8 h-8 rounded-lg 
-                                           border border-red-100 bg-red-50 text-red-500 
-                                           hover:bg-red-500 hover:text-white transition-all 
-                                           active:scale-95"
-                                title="Delete version"
-                            >
-                                <Trash2 size={12} />
-                            </button>
-                        </div>
-
+                        <button
+                            type="button"
+                            onClick={() => startRename(activeSet, activeIndex)}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg 
+                                       border border-zinc-200 bg-white text-[10px] font-bold 
+                                       text-zinc-500 hover:text-indigo-600 hover:border-indigo-200 
+                                       hover:bg-indigo-50 transition-all w-full"
+                        >
+                            <Pencil size={10} className="flex-shrink-0" />
+                            <span className="truncate">{getSetName(activeSet, activeIndex)}</span>
+                            <span className="text-zinc-300 ml-auto text-[9px]">click to rename</span>
+                        </button>
                     )}
                 </div>
             )}
