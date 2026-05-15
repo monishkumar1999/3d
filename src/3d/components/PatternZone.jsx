@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Stage, Layer, Image as KImage, Transformer, Rect, Text } from "react-konva";
-import { X, Trash, Layers, ArrowUp, ArrowDown, Sparkles } from "lucide-react";
+import { Stage, Layer, Image as KImage, Transformer, Rect, Line, Text, Group } from "react-konva";
+import { X, Sparkles, Square, PenLine, Trash2, CheckCheck } from "lucide-react";
 import FloatingTextToolbar from "./FloatingTextToolbar";
 import FloatingImageToolbar from "./FloatingImageToolbar";
 
@@ -34,6 +34,33 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
     const [selectedId, setSelectedId] = useState(null);
     const trRef = useRef(null);
 
+    // ── Zone state ──
+    // zones: [{ id, type:'rect'|'poly', x,y,w,h } | { id, type:'poly', points:[x0,y0,...] }]
+    const [zones, setZones] = useState([]);
+    const zonesRef = useRef(zones);
+    zonesRef.current = zones;
+    const [zoneMode, setZoneMode] = useState(null); // null | 'rect' | 'poly'
+    const [drawingRect, setDrawingRect] = useState(null); // { x0,y0,x1,y1 } while dragging
+    const [polyPoints, setPolyPoints] = useState([]); // flat [x0,y0,x1,y1,...] while drawing
+    const [cursorPos, setCursorPos] = useState(null); // { x, y } for poly preview
+    const [selectedZoneId, setSelectedZoneId] = useState(null);
+
+    // Delete selected zone with keyboard
+    useEffect(() => {
+        const onKey = (e) => {
+            if ((e.key === 'Delete' || e.key === 'Backspace') && selectedZoneId) {
+                setZones(prev => prev.filter(z => z.id !== selectedZoneId));
+                setSelectedZoneId(null);
+            }
+            if (e.key === 'Escape') {
+                setDrawingRect(null);
+                setPolyPoints([]);
+                setCursorPos(null);
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [selectedZoneId]);
 
     useEffect(() => {
         if (!maskUrl) return;
@@ -113,7 +140,7 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
                 image: img,
                 x: maskImg ? maskImg.naturalWidth / 2 - 200 : 500,
                 y: maskImg ? maskImg.naturalHeight / 2 - 200 : 500,
-                width: 400, height: 400, // Larger default for high-res stage
+                width: 400, height: 400,
                 rotation: 0
             };
             setStickers(prev => [...prev, newSticker]);
@@ -123,14 +150,26 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
         };
     }, [stickerUrl]);
 
+    // Sync sticker transformer (disabled in zone mode)
     useEffect(() => {
-        if (selectedId && trRef.current && stageRef.current) {
+        if (!zoneMode && selectedId && trRef.current && stageRef.current) {
             const node = stageRef.current.findOne('#' + selectedId);
             if (node) { trRef.current.nodes([node]); trRef.current.getLayer().batchDraw(); }
         } else if (trRef.current) {
             trRef.current.nodes([]);
         }
-    }, [selectedId, stickers]);
+    }, [selectedId, stickers, zoneMode]);
+
+    // Re-export whenever zones change OR when zone drawing mode exits.
+    // This ensures 3D model updates automatically when zones are added/removed/cleared,
+    // and also when the user first uploads a sticker (no zones = full UV area export).
+    useEffect(() => {
+        if (!zoneMode) {
+            // Small delay so React has re-rendered (zone shapes hidden) before we snapshot
+            setTimeout(() => triggerExport(), 100);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [zones, zoneMode]);
 
     // The actual export function — always reads latest values via refs
     const performExport = useCallback(() => {
@@ -146,10 +185,14 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
         const wireframeNode = layer.findOne('.wireframe');
         if (wireframeNode) wireframeNode.hide();
 
+        // Hide zone visual shapes so they don't appear on the 3D texture
+        const zoneNodes = layer.find('.zone-shape');
+        zoneNodes.forEach(n => n.hide());
+
         layer.draw();
 
-        // 2. Export full natural size
-        const uri = stageRef.current.toDataURL({
+        // 2. Export full natural size from Konva stage
+        const rawUri = stageRef.current.toDataURL({
             pixelRatio: 1,
             x: 0,
             y: 0,
@@ -159,11 +202,57 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
 
         // 3. Restore visibility
         if (wireframeNode) wireframeNode.show();
+        zoneNodes.forEach(n => n.show());
         layer.draw();
 
         // Export if there is ANY content (stickers or text)
         if (stickersRef.current.length > 0 || textNodesRef.current.length > 0) {
-            onUpdateTexture(meshName, uri);
+            const W = maskImg.naturalWidth;
+            const H = maskImg.naturalHeight;
+
+            const stickerImg = new window.Image();
+            stickerImg.onload = () => {
+                // Composite sticker through the UV mask shape so it is clipped
+                // to the UV island only (prevents bleed on the 3D mesh).
+                // NOTE: No Y-flip needed — Blender's GLTF exporter already flips UV Y
+                // on export (Blender: Y=0 bottom → GLTF: Y=0 top), so HTML canvas
+                // Y=0-at-top and GLTF UV Y=0-at-top are already aligned.
+                const maskedCanvas = document.createElement('canvas');
+                maskedCanvas.width = W;
+                maskedCanvas.height = H;
+                const maskedCtx = maskedCanvas.getContext('2d');
+
+                maskedCtx.drawImage(stickerImg, 0, 0, W, H);
+                // Clip to UV mask shape
+                maskedCtx.globalCompositeOperation = 'destination-in';
+                maskedCtx.drawImage(maskImg, 0, 0, W, H);
+                // If zones are defined, additionally clip to the union of all zones
+                if (zonesRef.current.length > 0) {
+                    const zoneCanvas = document.createElement('canvas');
+                    zoneCanvas.width = W; zoneCanvas.height = H;
+                    const zctx = zoneCanvas.getContext('2d');
+                    zctx.fillStyle = 'white';
+                    zonesRef.current.forEach(zone => {
+                        if (zone.type === 'rect') {
+                            zctx.fillRect(zone.x, zone.y, zone.w, zone.h);
+                        } else if (zone.type === 'poly' && zone.points.length >= 6) {
+                            zctx.beginPath();
+                            for (let i = 0; i < zone.points.length; i += 2) {
+                                if (i === 0) zctx.moveTo(zone.points[i], zone.points[i + 1]);
+                                else zctx.lineTo(zone.points[i], zone.points[i + 1]);
+                            }
+                            zctx.closePath();
+                            zctx.fill();
+                        }
+                    });
+                    maskedCtx.globalCompositeOperation = 'destination-in';
+                    maskedCtx.drawImage(zoneCanvas, 0, 0);
+                }
+                maskedCtx.globalCompositeOperation = 'source-over';
+
+                onUpdateTexture(meshName, maskedCanvas.toDataURL('image/png'));
+            };
+            stickerImg.src = rawUri;
         } else {
             onUpdateTexture(meshName, null);
         }
@@ -191,28 +280,56 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
         <div className="relative group transition-all duration-300 p-2 z-10" onClick={onClick}>
             {/* Controls above canvas */}
             <div className="absolute -top-7 left-0 right-0 flex items-center justify-between opacity-60 group-hover:opacity-100 transition-opacity">
-                <span className={`text-[10px] font-bold uppercase tracking-widest ${isSelected ? 'text-indigo-600' : 'text-zinc-500'}`}>
+                <span className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 ${isSelected ? 'text-indigo-600' : 'text-zinc-500'}`}>
                     {meshName}
+                    {zones.length > 0 && !zoneMode && (
+                        <span className="bg-cyan-100 text-cyan-600 text-[8px] px-1 rounded font-bold border border-cyan-200">{zones.length} zone{zones.length > 1 ? 's' : ''}</span>
+                    )}
                 </span>
-                <div className="flex items-center gap-1.5">
-                    <button
-                        onClick={(e) => { e.stopPropagation(); triggerExport(); }}
-                        className="p-1 hover:bg-indigo-50 text-indigo-400 rounded-full border border-transparent hover:border-indigo-200"
-                        title="Force Sync 3D"
-                    >
+                <div className="flex items-center gap-1">
+                    {/* Zone mode toolbar */}
+                    {zoneMode ? (
+                        <>
+                            <span className="text-[9px] text-indigo-500 font-bold mr-1 italic">
+                                {zoneMode === 'rect' ? 'Drag to draw rect' : polyPoints.length === 0 ? 'Click to add points' : `${polyPoints.length / 2} points — Double click to close`}
+                            </span>
+                            <button onClick={(e) => { e.stopPropagation(); setZoneMode('rect'); setPolyPoints([]); setDrawingRect(null); }}
+                                className={`px-2 py-0.5 text-[9px] rounded font-bold border transition-all ${ zoneMode === 'rect' ? 'bg-indigo-500 text-white border-indigo-500 shadow-sm' : 'bg-white border-zinc-200 text-zinc-500 hover:border-indigo-400'}`}>
+                                <Square size={9} className="inline mr-1" />Rect
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); setZoneMode('poly'); setDrawingRect(null); setPolyPoints([]); }}
+                                className={`px-2 py-0.5 text-[9px] rounded font-bold border transition-all ${ zoneMode === 'poly' ? 'bg-indigo-500 text-white border-indigo-500 shadow-sm' : 'bg-white border-zinc-200 text-zinc-500 hover:border-indigo-400'}`}>
+                                <PenLine size={9} className="inline mr-1" />Poly
+                            </button>
+                            {zones.length > 0 && (
+                                <button onClick={(e) => { e.stopPropagation(); setZones([]); setSelectedZoneId(null); }}
+                                    className="p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors" title="Clear all zones">
+                                    <Trash2 size={11} />
+                                </button>
+                            )}
+                            <button onClick={(e) => { e.stopPropagation(); setZoneMode(null); setDrawingRect(null); setPolyPoints([]); setCursorPos(null); }}
+                                className="flex items-center gap-1 px-2.5 py-0.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-[9px] font-bold shadow-sm transition-colors">
+                                <CheckCheck size={10} />Done
+                            </button>
+                        </>
+                    ) : (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setZoneMode('rect'); setSelectedId(null); }}
+                            className={`p-1.5 rounded-lg border transition-all ${
+                                zones.length > 0 ? 'bg-cyan-50 text-cyan-600 border-cyan-200 shadow-sm' : 'text-zinc-400 hover:bg-zinc-100 border-transparent hover:border-zinc-200'
+                            }`}
+                            title="Draw customization zones"
+                        >
+                            <Square size={12} />
+                        </button>
+                    )}
+                    <button onClick={(e) => { e.stopPropagation(); triggerExport(); }}
+                        className="p-1 hover:bg-indigo-50 text-indigo-400 rounded-full" title="Sync 3D">
                         <Sparkles size={11} />
                     </button>
                     {(stickers.length > 0 || textNodes.length > 0) && (
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                setStickers([]);
-                                setTextNodes([]);
-                                setSelectedId(null);
-                                onUpdateTexture(meshName, null);
-                            }}
-                            className="p-1 hover:bg-red-50 text-red-400 rounded-full border border-transparent hover:border-red-200"
-                        >
+                        <button onClick={(e) => { e.stopPropagation(); setStickers([]); setTextNodes([]); setSelectedId(null); onUpdateTexture(meshName, null); }}
+                            className="p-1 hover:bg-red-50 text-red-400 rounded-full">
                             <X size={11} />
                         </button>
                     )}
@@ -241,10 +358,60 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
                         width={maskImg.naturalWidth}
                         height={maskImg.naturalHeight}
                         ref={stageRef}
+                        style={{ cursor: zoneMode ? (zoneMode === 'rect' ? 'crosshair' : 'cell') : 'default' }}
                         onMouseDown={(e) => {
-                            if (e.target === e.target.getStage()) setSelectedId(null);
+                            if (zoneMode === 'rect') {
+                                const pos = e.target.getStage().getPointerPosition();
+                                setDrawingRect({ x0: pos.x, y0: pos.y, x1: pos.x, y1: pos.y });
+                                return;
+                            }
+                            if (!zoneMode && e.target === e.target.getStage()) setSelectedId(null);
                         }}
-                        onMouseUp={() => triggerExport()}
+                        onMouseMove={(e) => {
+                            const pos = e.target.getStage().getPointerPosition();
+                            if (!pos) return;
+                            if (zoneMode === 'rect' && drawingRect) {
+                                setDrawingRect(prev => ({ ...prev, x1: pos.x, y1: pos.y }));
+                            }
+                            if (zoneMode === 'poly') setCursorPos(pos);
+                        }}
+                        onMouseUp={(e) => {
+                            if (zoneMode === 'rect' && drawingRect) {
+                                const x = Math.min(drawingRect.x0, drawingRect.x1);
+                                const y = Math.min(drawingRect.y0, drawingRect.y1);
+                                const w = Math.abs(drawingRect.x1 - drawingRect.x0);
+                                const h = Math.abs(drawingRect.y1 - drawingRect.y0);
+                                if (w > 10 && h > 10) {
+                                    setZones(prev => [...prev, { id: 'z_' + Date.now(), type: 'rect', x, y, w, h }]);
+                                }
+                                setDrawingRect(null);
+                                return;
+                            }
+                            if (!zoneMode) triggerExport();
+                        }}
+                        onClick={(e) => {
+                            if (zoneMode !== 'poly') return;
+                            const pos = e.target.getStage().getPointerPosition();
+                            if (!pos) return;
+                            // Close polygon if clicking near the first point
+                            if (polyPoints.length >= 6) {
+                                const dx = pos.x - polyPoints[0];
+                                const dy = pos.y - polyPoints[1];
+                                if (Math.sqrt(dx * dx + dy * dy) < 20) {
+                                    setZones(prev => [...prev, { id: 'z_' + Date.now(), type: 'poly', points: [...polyPoints] }]);
+                                    setPolyPoints([]);
+                                    setCursorPos(null);
+                                    return;
+                                }
+                            }
+                            setPolyPoints(prev => [...prev, pos.x, pos.y]);
+                        }}
+                        onDblClick={(e) => {
+                            if (zoneMode !== 'poly' || polyPoints.length < 6) return;
+                            setZones(prev => [...prev, { id: 'z_' + Date.now(), type: 'poly', points: [...polyPoints] }]);
+                            setPolyPoints([]);
+                            setCursorPos(null);
+                        }}
                     >
                         <Layer>
                             {/* Transparent base by default */}
@@ -266,76 +433,192 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
                                 />
                             )}
 
-                            {/* Stickers */}
-                            {stickers.map((s) => (
-                                <KImage
-                                    key={s.id}
-                                    id={s.id}
-                                    image={s.image}
-                                    x={s.x} y={s.y}
-                                    width={s.width} height={s.height}
-                                    opacity={s.opacity ?? 1}
-                                    rotation={s.rotation}
-                                    draggable
-                                    onClick={() => setSelectedId(s.id)}
-                                    onDragMove={() => triggerExport()}
-                                    onDragEnd={(e) => {
-                                        const id = e.target.id();
-                                        setStickers(prev => prev.map(st =>
-                                            st.id === id ? { ...st, x: e.target.x(), y: e.target.y() } : st
-                                        ));
-                                        triggerExport();
-                                    }}
-                                    onTransformEnd={(e) => {
-                                        const node = e.target;
-                                        const id = node.id();
-                                        const newW = Math.max(5, node.width() * node.scaleX());
-                                        const newH = Math.max(5, node.height() * node.scaleY());
-                                        node.scaleX(1); node.scaleY(1);
-                                        setStickers(prev => prev.map(st =>
-                                            st.id === id ? { ...st, x: node.x(), y: node.y(), width: newW, height: newH, rotation: node.rotation() } : st
-                                        ));
-                                        setTimeout(() => triggerExport(), 50);
-                                    }}
-                                />
+                            {/* ── ZONES ── */}
+                            {/* Saved zones */}
+                            {zones.map(zone => (
+                                zone.type === 'rect' ? (
+                                    <Rect key={zone.id}
+                                        name="zone-shape"
+                                        x={zone.x} y={zone.y} width={zone.w} height={zone.h}
+                                        fill={selectedZoneId === zone.id ? 'rgba(37,99,235,0.1)' : 'rgba(6,182,212,0.05)'}
+                                        stroke={selectedZoneId === zone.id ? '#2563eb' : '#06b6d4'}
+                                        strokeWidth={selectedZoneId === zone.id ? 4 : 2}
+                                        dash={selectedZoneId === zone.id ? [] : [10, 5]}
+                                        listening={!!zoneMode}
+                                        onClick={() => setSelectedZoneId(prev => prev === zone.id ? null : zone.id)}
+                                    />
+                                ) : (
+                                    <Line key={zone.id}
+                                        name="zone-shape"
+                                        points={zone.points}
+                                        closed
+                                        fill={selectedZoneId === zone.id ? 'rgba(37,99,235,0.1)' : 'rgba(6,182,212,0.05)'}
+                                        stroke={selectedZoneId === zone.id ? '#2563eb' : '#06b6d4'}
+                                        strokeWidth={selectedZoneId === zone.id ? 4 : 2}
+                                        dash={selectedZoneId === zone.id ? [] : [10, 5]}
+                                        listening={!!zoneMode}
+                                        onClick={() => setSelectedZoneId(prev => prev === zone.id ? null : zone.id)}
+                                    />
+                                )
                             ))}
+                            {/* In-progress rectangle */}
+                            {zoneMode === 'rect' && drawingRect && (() => {
+                                const x = Math.min(drawingRect.x0, drawingRect.x1);
+                                const y = Math.min(drawingRect.y0, drawingRect.y1);
+                                const w = Math.abs(drawingRect.x1 - drawingRect.x0);
+                                const h = Math.abs(drawingRect.y1 - drawingRect.y0);
+                                return <Rect name="zone-shape" x={x} y={y} width={w} height={h}
+                                    fill="rgba(79,70,229,0.1)" stroke="#4f46e5" strokeWidth={5} dash={[16, 8]} listening={false} />;
+                            })()}
+                            {/* In-progress polygon */}
+                            {zoneMode === 'poly' && polyPoints.length >= 2 && (
+                                <>
+                                    <Line
+                                        name="zone-shape"
+                                        points={[
+                                            ...polyPoints,
+                                            ...(cursorPos ? [cursorPos.x, cursorPos.y] : [])
+                                        ]}
+                                        stroke="#4f46e5" strokeWidth={4} dash={[12, 6]}
+                                        fill="rgba(79,70,229,0.1)" closed={false} listening={false}
+                                    />
+                                    {/* First-point close indicator */}
+                                    {polyPoints.length >= 6 && (
+                                        <Rect
+                                            name="zone-shape"
+                                            x={polyPoints[0] - 10} y={polyPoints[1] - 10}
+                                            width={20} height={20}
+                                            fill="rgba(79,70,229,0.4)" stroke="#4f46e5" strokeWidth={3}
+                                            cornerRadius={10} listening={false}
+                                        />
+                                    )}
+                                </>
+                            )}
 
-                            {/* Text Nodes */}
-                            {textNodes.map((t) => (
-                                <Text
-                                    key={t.id}
-                                    id={t.id}
-                                    text={t.text}
-                                    x={t.x} y={t.y}
-                                    fontSize={t.fontSize}
-                                    fill={t.fill}
-                                    fontFamily={t.fontFamily}
-                                    opacity={t.opacity ?? 1}
-                                    rotation={t.rotation}
-                                    draggable
-                                    fontStyle="bold"
-                                    onClick={() => setSelectedId(t.id)}
-                                    onDragMove={() => triggerExport()}
-                                    onDragEnd={(e) => {
-                                        const id = e.target.id();
-                                        setTextNodes(prev => prev.map(tn =>
-                                            tn.id === id ? { ...tn, x: e.target.x(), y: e.target.y() } : tn
-                                        ));
-                                        triggerExport();
-                                    }}
-                                    onTransformEnd={(e) => {
-                                        const node = e.target;
-                                        const id = node.id();
-                                        const newSize = node.fontSize() * node.scaleX();
-                                        node.scaleX(1); node.scaleY(1);
-                                        setTextNodes(prev => prev.map(tn =>
-                                            tn.id === id ? { ...tn, x: node.x(), y: node.y(), fontSize: newSize, rotation: node.rotation() } : tn
-                                        ));
-                                        setTimeout(() => triggerExport(), 50);
-                                    }}
-                                />
-                            ))}
+                            {/* ── STICKERS & TEXT ── */}
+                            
+                            {/* 1. Dull version (Background) — shows the full placement but dimmed */}
+                            <Group opacity={0.15}>
+                                {stickers.map((s) => (
+                                    <KImage
+                                        key={s.id + '_dull'}
+                                        image={s.image}
+                                        x={s.x} y={s.y}
+                                        width={s.width} height={s.height}
+                                        rotation={s.rotation}
+                                        listening={false}
+                                    />
+                                ))}
+                                {textNodes.map((t) => (
+                                    <Text
+                                        key={t.id + '_dull'}
+                                        text={t.text}
+                                        x={t.x} y={t.y}
+                                        fontSize={t.fontSize}
+                                        fill={t.fill}
+                                        fontFamily={t.fontFamily}
+                                        rotation={t.rotation}
+                                        fontStyle="bold"
+                                        listening={false}
+                                    />
+                                ))}
+                            </Group>
 
+                            {/* 2. Clear version (Clipped) — only visible inside zones */}
+                            <Group 
+                                clipFunc={(ctx) => {
+                                    if (zones.length === 0) {
+                                        // If no zones, everything is "clear" (or we could default to nothing clear, 
+                                        // but usually "no zones" means the whole area is customized).
+                                        // To show everything clear when no zones:
+                                        ctx.rect(0, 0, maskImg.naturalWidth, maskImg.naturalHeight);
+                                        return;
+                                    }
+                                    zones.forEach(zone => {
+                                        if (zone.type === 'rect') {
+                                            ctx.rect(zone.x, zone.y, zone.w, zone.h);
+                                        } else if (zone.type === 'poly' && zone.points.length >= 6) {
+                                            ctx.moveTo(zone.points[0], zone.points[1]);
+                                            for (let i = 2; i < zone.points.length; i += 2) {
+                                                ctx.lineTo(zone.points[i], zone.points[i + 1]);
+                                            }
+                                            ctx.closePath();
+                                        }
+                                    });
+                                }}
+                            >
+                                {stickers.map((s) => (
+                                    <KImage
+                                        key={s.id}
+                                        id={s.id}
+                                        image={s.image}
+                                        x={s.x} y={s.y}
+                                        width={s.width} height={s.height}
+                                        opacity={s.opacity ?? 1}
+                                        rotation={s.rotation}
+                                        draggable={!zoneMode}
+                                        listening={!zoneMode}
+                                        onClick={() => setSelectedId(s.id)}
+                                        onDragMove={() => triggerExport()}
+                                        onDragEnd={(e) => {
+                                            const id = e.target.id();
+                                            setStickers(prev => prev.map(st =>
+                                                st.id === id ? { ...st, x: e.target.x(), y: e.target.y() } : st
+                                            ));
+                                            triggerExport();
+                                        }}
+                                        onTransformEnd={(e) => {
+                                            const node = e.target;
+                                            const id = node.id();
+                                            const newW = Math.max(5, node.width() * node.scaleX());
+                                            const newH = Math.max(5, node.height() * node.scaleY());
+                                            node.scaleX(1); node.scaleY(1);
+                                            setStickers(prev => prev.map(st =>
+                                                st.id === id ? { ...st, x: node.x(), y: node.y(), width: newW, height: newH, rotation: node.rotation() } : st
+                                            ));
+                                            setTimeout(() => triggerExport(), 50);
+                                        }}
+                                    />
+                                ))}
+
+                                {textNodes.map((t) => (
+                                    <Text
+                                        key={t.id}
+                                        id={t.id}
+                                        text={t.text}
+                                        x={t.x} y={t.y}
+                                        fontSize={t.fontSize}
+                                        fill={t.fill}
+                                        fontFamily={t.fontFamily}
+                                        opacity={t.opacity ?? 1}
+                                        rotation={t.rotation}
+                                        draggable={!zoneMode}
+                                        listening={!zoneMode}
+                                        fontStyle="bold"
+                                        onClick={() => setSelectedId(t.id)}
+                                        onDragMove={() => triggerExport()}
+                                        onDragEnd={(e) => {
+                                            const id = e.target.id();
+                                            setTextNodes(prev => prev.map(tn =>
+                                                tn.id === id ? { ...tn, x: e.target.x(), y: e.target.y() } : tn
+                                            ));
+                                            triggerExport();
+                                        }}
+                                        onTransformEnd={(e) => {
+                                            const node = e.target;
+                                            const id = node.id();
+                                            const newSize = node.fontSize() * node.scaleX();
+                                            node.scaleX(1); node.scaleY(1);
+                                            setTextNodes(prev => prev.map(tn =>
+                                                tn.id === id ? { ...tn, x: node.x(), y: node.y(), fontSize: newSize, rotation: node.rotation() } : tn
+                                            ));
+                                            setTimeout(() => triggerExport(), 50);
+                                        }}
+                                    />
+                                ))}
+                            </Group>
+
+                            {/* Sticker Transformer — always rendered, detached in zone mode */}
                             <Transformer
                                 ref={trRef}
                                 borderStroke="#4f46e5"

@@ -41,6 +41,7 @@ const DynamicModel = React.memo(({ url, meshTextures, baseTextures, pbrTextures,
     useEffect(() => {
         clonedScene.traverse((child) => {
             if (!child.isMesh) return;
+            if (child.userData['__stickerOverlay__']) return; // skip sticker overlays
 
             if (showOriginal) {
                 child.material = child.userData.originalMat;
@@ -116,50 +117,58 @@ const DynamicModel = React.memo(({ url, meshTextures, baseTextures, pbrTextures,
         });
     }, [clonedScene, baseTextures, pbrTextures, meshMaterials, materialProps, materialSettings, showOriginal, textureLoader]);
 
-    // Render the scene and portals for overlays
+    // Attach sticker overlay meshes directly inside the scene hierarchy
+    // so they perfectly track each parentMesh without any Center misalignment.
+    useEffect(() => {
+        const overlayTag = '__stickerOverlay__';
+
+        clonedScene.traverse(child => {
+            if (!child.isMesh) return;
+            if (child.userData[overlayTag]) return; // skip overlays themselves
+            const meshName = child.name;
+
+            // Remove any existing overlay children
+            const toRemove = child.children.filter(c => c.userData[overlayTag]);
+            toRemove.forEach(c => {
+                if (c.material) c.material.dispose();
+                child.remove(c);
+            });
+
+            const stickerTex = meshTextures[meshName];
+            if (!stickerTex || showOriginal) return;
+
+            const meshMat = meshMaterials[meshName] || {};
+            const currentRoughness = meshMat.roughness !== undefined ? meshMat.roughness : (materialSettings.roughness ?? 0.5);
+            const currentMetalness = meshMat.metalness !== undefined ? meshMat.metalness : (materialSettings.metalness ?? 0);
+            const currentTransmission = meshMat.transmission !== undefined ? meshMat.transmission : 0;
+
+            // Build overlay mesh using the same geometry — identity transform (inherits parent's)
+            const mat = new THREE.MeshPhysicalMaterial({
+                map: stickerTex,
+                transparent: true,
+                depthWrite: false,
+                polygonOffset: true,
+                polygonOffsetFactor: -4,
+                polygonOffsetUnits: -4,
+                side: THREE.DoubleSide,
+                roughness: currentRoughness,
+                metalness: currentMetalness,
+                transmission: currentTransmission,
+                ior: 1.5,
+                thickness: 0.5,
+            });
+
+            const overlay = new THREE.Mesh(child.geometry, mat);
+            overlay.renderOrder = 10;
+            overlay.userData[overlayTag] = true;
+            child.add(overlay); // identity transform → sits exactly on top of parent
+        });
+    }, [clonedScene, meshTextures, meshMaterials, materialSettings, showOriginal]);
+
+    // Render the scene — overlays are now embedded in clonedScene hierarchy
     return (
         <Center>
             <primitive object={clonedScene} />
-            
-            {/* Render Overlays as distinct React components for better sync */}
-            {!showOriginal && meshes.map(meshName => {
-                const stickerTex = meshTextures[meshName];
-                if (!stickerTex) return null;
-
-                const parentMesh = clonedScene.getObjectByName(meshName);
-                if (!parentMesh) return null;
-
-                const meshMat = meshMaterials[meshName] || {};
-                const currentRoughness = meshMat.roughness !== undefined ? meshMat.roughness : (materialSettings.roughness !== undefined ? materialSettings.roughness : 0.5);
-                const currentMetalness = meshMat.metalness !== undefined ? meshMat.metalness : (materialSettings.metalness !== undefined ? materialSettings.metalness : 0);
-                const currentTransmission = meshMat.transmission !== undefined ? meshMat.transmission : 0;
-
-                return (
-                    <mesh 
-                        key={`overlay-${meshName}`}
-                        geometry={parentMesh.geometry}
-                        position={parentMesh.getWorldPosition(new THREE.Vector3())}
-                        quaternion={parentMesh.getWorldQuaternion(new THREE.Quaternion())}
-                        scale={parentMesh.getWorldScale(new THREE.Vector3())}
-                        renderOrder={10}
-                    >
-                        <meshPhysicalMaterial 
-                            map={stickerTex} 
-                            transparent={true} 
-                            depthWrite={false}
-                            polygonOffset={true}
-                            polygonOffsetFactor={-4}
-                            polygonOffsetUnits={-4}
-                            side={THREE.DoubleSide}
-                            roughness={currentRoughness}
-                            metalness={currentMetalness}
-                            transmission={currentTransmission}
-                            ior={1.5}
-                            thickness={0.5}
-                        />
-                    </mesh>
-                );
-            })}
         </Center>
     );
 });

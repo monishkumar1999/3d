@@ -161,7 +161,7 @@ const DesignPhase = ({ productId, glbUrl, meshConfig, meshTextures, baseTextures
                             <label className="flex flex-col items-center justify-center h-28 border-2 border-dashed border-zinc-200 rounded-2xl hover:border-indigo-400 hover:bg-indigo-50/50 transition-all cursor-pointer group bg-zinc-50/50">
                                 <Upload size={20} className="text-zinc-300 group-hover:text-indigo-500 mb-1 transition-colors" />
                                 <span className="text-[10px] font-bold text-zinc-500 group-hover:text-indigo-600">Image</span>
-                                <input type="file" accept="image/*" onChange={(e) => { if (e.target.files[0]) setActiveStickerUrl(URL.createObjectURL(e.target.files[0])); }} className="hidden" />
+                                <input type="file" accept="image/*" onChange={(e) => { if (e.target.files[0]) { setActiveStickerUrl(URL.createObjectURL(e.target.files[0])); e.target.value = ''; } }} className="hidden" />
                             </label>
 
                             <button

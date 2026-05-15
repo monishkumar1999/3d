@@ -93,26 +93,39 @@ function getPbrSetNameFromFile(file, fallback) {
 }
 
 function loadTextureFromFile(file, colorSpace) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
         const url = URL.createObjectURL(file);
-        new THREE.TextureLoader().load(url, (tex) => {
-            tex.colorSpace = colorSpace;
-            tex.flipY = false;
-            tex.needsUpdate = true;
-            URL.revokeObjectURL(url);
-            resolve(tex);
-        });
+        new THREE.TextureLoader().load(
+            url,
+            (tex) => {
+                tex.colorSpace = colorSpace || THREE.NoColorSpace;
+                tex.flipY = false;
+                tex.needsUpdate = true;
+                URL.revokeObjectURL(url);
+                resolve(tex);
+            },
+            undefined, // onProgress
+            (err) => {
+                URL.revokeObjectURL(url);
+                reject(err);
+            }
+        );
     });
 }
 
 function loadTextureFromUrl(url, colorSpace) {
-    return new Promise((resolve) => {
-        new THREE.TextureLoader().load(url, (tex) => {
-            tex.colorSpace = colorSpace;
-            tex.flipY = false;
-            tex.needsUpdate = true;
-            resolve(tex);
-        });
+    return new Promise((resolve, reject) => {
+        new THREE.TextureLoader().load(
+            url,
+            (tex) => {
+                tex.colorSpace = colorSpace || THREE.NoColorSpace;
+                tex.flipY = false;
+                tex.needsUpdate = true;
+                resolve(tex);
+            },
+            undefined,
+            (err) => reject(err)
+        );
     });
 }
 
@@ -413,60 +426,93 @@ export const useProductConfigStore = create((set, get) => ({
     },
 
 
-    applyMap: async (meshId, setId, slot, file) => {
+    applyMap: async (meshId, setId, slot, filesInput) => {
         if (!meshId || !slot) return;
 
-        const files = Array.isArray(file) ? file.filter(Boolean) : file ? [file] : [];
+        const files = Array.from(filesInput ?? []).filter(Boolean);
 
+        // CASE: CLEAR SLOT
         if (files.length === 0) {
+            console.log(`[Store] Clearing slot: ${slot.key} for mesh: ${meshId}`);
             set((state) => ({
-                pbrSets: updateSetInState(state, meshId, setId, (pbrSet) => ({
-                    ...pbrSet,
-                    maps: { ...pbrSet.maps, [slot.key]: null },
-                })),
+                pbrSets: updateSetInState(state, meshId, setId, (pbrSet) => {
+                    const newMaps = { ...pbrSet.maps };
+                    if (newMaps[slot.key]) {
+                        if (newMaps[slot.key].dispose) newMaps[slot.key].dispose();
+                        delete newMaps[slot.key];
+                    }
+                    return { ...pbrSet, maps: newMaps };
+                }),
             }));
             return;
         }
 
-        const loadedMaps = await Promise.all(
-            files.map(async (mapFile) => ({
-                file: mapFile,
-                texture: await loadTextureFromFile(mapFile, slot.colorSpace),
-            }))
-        );
+        // CASE: UPLOAD
+        console.log(`[Store] Uploading ${files.length} file(s) for slot: ${slot.key}`);
+        
+        try {
+            const loadedMaps = await Promise.all(
+                files.map(async (file) => {
+                    try {
+                        const texture = await loadTextureFromFile(file, slot.colorSpace);
+                        return { file, texture };
+                    } catch (err) {
+                        console.error(`[Store] Failed to load texture: ${file.name}`, err);
+                        return null;
+                    }
+                })
+            ).then(results => results.filter(Boolean));
 
-        set((state) => ({
-            pbrSets: (() => {
-                const meshState = normalizePbrSetState(state.pbrSets[meshId]);
-                const textureData = loadedMaps[0];
-                if (!textureData) return state.pbrSets;
+            if (loadedMaps.length === 0) {
+                set({ saveError: "Failed to load image file(s)." });
+                return;
+            }
 
+            set((state) => {
+                const nextPbrSets = { ...state.pbrSets };
+                const meshState = normalizePbrSetState(nextPbrSets[meshId]);
                 const targetSetId = setId ?? meshState.activeSetId;
-                const setIndex = meshState.sets.findIndex((pbrSet) => pbrSet.id === targetSetId);
-                if (setIndex === -1) return state.pbrSets;
+                const setIndex = meshState.sets.findIndex(s => s.id === targetSetId);
+                
+                if (setIndex === -1) return {};
 
                 const nextSets = [...meshState.sets];
-                const currentSet = nextSets[setIndex];
-                const shouldRenameSet = !pbrSetHasMaps(currentSet) && isDefaultPbrSetName(currentSet.name);
+                const currentSet = { ...nextSets[setIndex] };
+                const nextMaps = { ...currentSet.maps };
+
+                // Primary slot update
+                if (nextMaps[slot.key]?.dispose) nextMaps[slot.key].dispose();
+                nextMaps[slot.key] = loadedMaps[0].texture;
+
+                // Auto-rename set if it's still using a default name
+                let nextSetName = currentSet.name;
+                if (!pbrSetHasMaps(currentSet) && isDefaultPbrSetName(currentSet.name)) {
+                    nextSetName = getPbrSetNameFromFile(loadedMaps[0].file, currentSet.name);
+                }
 
                 nextSets[setIndex] = {
                     ...currentSet,
-                    name: shouldRenameSet
-                        ? getPbrSetNameFromFile(textureData.file, currentSet.name)
-                        : currentSet.name,
-                    maps: { ...currentSet.maps, [slot.key]: textureData.texture },
+                    name: nextSetName,
+                    maps: nextMaps
                 };
 
+                console.log(`[Store] Successfully updated ${slot.key} for set ${targetSetId}`);
+
                 return {
-                    ...state.pbrSets,
-                    [meshId]: {
-                        ...meshState,
-                        activeSetId: targetSetId,
-                        sets: nextSets,
-                    },
+                    pbrSets: {
+                        ...nextPbrSets,
+                        [meshId]: {
+                            ...meshState,
+                            activeSetId: targetSetId,
+                            sets: nextSets
+                        }
+                    }
                 };
-            })(),
-        }));
+            });
+        } catch (globalErr) {
+            console.error("[Store] applyMap global error:", globalErr);
+            set({ saveError: "An unexpected error occurred during upload." });
+        }
     },
 
     clearMeshPbr: (meshId) =>

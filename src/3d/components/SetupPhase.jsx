@@ -116,7 +116,7 @@ const SetupPhase = ({ glbUrl, meshList, meshConfig, globalMaterial, setGlbUrl, h
     // When meshes are detected, reset placement
     useEffect(() => {
         if (autoPlaceMeshes && meshList.length > 0) {
-            setPlacedMeshes(meshList);
+            setPlacedMeshes([]);
         } else {
             setPlacedMeshes([]);
         }
