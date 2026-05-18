@@ -3,7 +3,7 @@
  * Shared constants and helpers for the PBR Panel
  */
 export const MIN_TEXTURE_REPEAT = 0.25;
-export const MAX_TEXTURE_REPEAT = 8;
+export const MAX_TEXTURE_REPEAT = 80;
 
 export function formatTextureRepeat(value) {
     const formatted = Number(value ?? 1.0).toFixed(2);

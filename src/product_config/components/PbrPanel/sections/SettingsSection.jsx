@@ -6,7 +6,7 @@ const SettingsSection = memo(({ selectedSettings, onSettingChange }) => {
         <div className="space-y-3 rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3">
             <div>
                 <div className="mb-1.5 flex items-center justify-between gap-3">
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">Texture Repeat</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">Textures Repeat</span>
                     <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-zinc-700">
                         {formatTextureRepeat(selectedSettings.textureRepeat)}x
                     </span>

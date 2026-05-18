@@ -14,6 +14,7 @@ const ConfiguratorTab = memo(() => {
     const pbrSets = useProductConfigStore((state) => state.pbrSets);
     const updatePbrSet = useProductConfigStore((state) => state.updatePbrSet);
     const applyMap = useProductConfigStore((state) => state.applyMap);
+    const applyMapToAll = useProductConfigStore((state) => state.applyMapToAll);
     const updatePbrSettings = useProductConfigStore((state) => state.updatePbrSettings);
     const getGlobalSetState = useProductConfigStore((state) => state.getGlobalSetState);
 
@@ -32,6 +33,7 @@ const ConfiguratorTab = memo(() => {
     const meshesLength = meshes.length;
 
     const onUpload = useCallback((slot, files) => applyMap(selectedMeshId, activeSetId, slot, files), [activeSetId, applyMap, selectedMeshId]);
+    const onApplyToAll = useCallback((slot, files) => applyMapToAll(activeSetId, slot, files), [activeSetId, applyMapToAll]);
     const onClear = useCallback((slot) => applyMap(selectedMeshId, activeSetId, slot, null), [activeSetId, applyMap, selectedMeshId]);
     const onSettingChange = useCallback((patch) => updatePbrSettings(selectedMeshId, activeSetId, patch), [activeSetId, selectedMeshId, updatePbrSettings]);
     const onSetNameChange = useCallback((name) => updatePbrSet(selectedMeshId, activeSetId, { name }), [activeSetId, selectedMeshId, updatePbrSet]);
@@ -64,7 +66,7 @@ const ConfiguratorTab = memo(() => {
                             <p className="text-[11px] text-zinc-400 text-center pt-8 font-medium">Initializing mesh state...</p>
                         ) : (
                             <>
-                                <TextureSection 
+                                <TextureSection
                                     selectedMeshId={selectedMeshId}
                                     activeSet={activeSet}
                                     activeSetId={activeSetId}
@@ -73,6 +75,7 @@ const ConfiguratorTab = memo(() => {
                                     sets={sets}
                                     onSetNameChange={onSetNameChange}
                                     onUpload={onUpload}
+                                    onApplyToAll={onApplyToAll}
                                     onClear={onClear}
                                 />
                                 <SettingsSection selectedSettings={selectedSettings} onSettingChange={onSettingChange} />

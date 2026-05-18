@@ -39,6 +39,8 @@ const PBR_MAP_SLOTS = [
     { key: 'ao', label: 'AO', hint: 'Ambient occlusion' },
     { key: 'orm', label: 'ORM', hint: 'Packed AO/R/M' },
 ];
+const ARTWORK_UPLOAD_MAX_EDGE = 2048;
+const TEXTURE_EXPORT_MAX_EDGE = 2048;
 
 // ── Hex ↔ RGB helpers ──
 const hexToRgb = (hex) => {
@@ -100,6 +102,52 @@ const loadImageElement = (src) => new Promise((resolve, reject) => {
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
     img.src = src;
+});
+
+const loadOptimizedImageFile = (file, maxLongestEdge = ARTWORK_UPLOAD_MAX_EDGE) => new Promise((resolve, reject) => {
+    const sourceUrl = URL.createObjectURL(file);
+    const sourceImage = new window.Image();
+
+    sourceImage.onload = () => {
+        const naturalWidth = sourceImage.naturalWidth || sourceImage.width;
+        const naturalHeight = sourceImage.naturalHeight || sourceImage.height;
+        const longestEdge = Math.max(naturalWidth, naturalHeight);
+
+        if (!naturalWidth || !naturalHeight || longestEdge <= maxLongestEdge) {
+            resolve(sourceImage);
+            return;
+        }
+
+        const scale = maxLongestEdge / longestEdge;
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(naturalHeight * scale));
+
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(sourceImage, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(sourceUrl);
+
+        canvas.toBlob((blob) => {
+            if (!blob) {
+                reject(new Error('Failed to resize artwork image.'));
+                return;
+            }
+
+            const resizedUrl = URL.createObjectURL(blob);
+            const resizedImage = new window.Image();
+            resizedImage.onload = () => resolve(resizedImage);
+            resizedImage.onerror = () => reject(new Error(`Failed to load resized image: ${file.name}`));
+            resizedImage.src = resizedUrl;
+        }, file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png', 0.92);
+    };
+
+    sourceImage.onerror = () => {
+        URL.revokeObjectURL(sourceUrl);
+        reject(new Error(`Failed to load image: ${file.name}`));
+    };
+    sourceImage.src = sourceUrl;
 });
 
 const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
@@ -578,7 +626,7 @@ const PbrTextureUploader = ({ pbrTextures, materialSettings, onUpload, onClear, 
             <div className="space-y-3 border-t border-slate-100 pt-3">
                 <div>
                     <div className="flex items-center justify-between mb-1.5">
-                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-600">Texture Repeat</p>
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-600">Textures Repeat</p>
                         <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">{formatTextureRepeat(materialSettings.textureRepeat)}x</span>
                     </div>
                     <input
@@ -1084,19 +1132,22 @@ const TestUVWorkflow = ({ initialGlbUrl, initialMaskUrl, initialProductData }) =
     }, [popup]);
 
     // ── Handle Sticker Upload ──
-    const handleStickerUpload = (e) => {
+    const handleStickerUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        const url = URL.createObjectURL(file);
-        const img = new window.Image();
-        img.src = url;
-        img.onload = () => {
+
+        try {
+            const img = await loadOptimizedImageFile(file);
             const newSticker = { id: Date.now().toString(), image: img, x: 50, y: 50, width: 120, height: 120, rotation: 0 };
             setStickers(prev => [...prev, newSticker]);
             setSelectedStickerId(newSticker.id);
-            URL.revokeObjectURL(url);
             setTimeout(() => triggerExport(), 100);
-        };
+        } catch (error) {
+            console.error('Failed to upload artwork image:', error);
+            alert(`Failed to load ${file.name}. Please try another image.`);
+        } finally {
+            e.target.value = null;
+        }
     };
 
     // ── Export Konva → Texture ──
@@ -1161,7 +1212,10 @@ const TestUVWorkflow = ({ initialGlbUrl, initialMaskUrl, initialProductData }) =
         if (highlightNode) highlightNode.visible(false);
 
         const r = maskImg.naturalWidth > 0 ? Math.min(600 / maskImg.naturalWidth, 600 / maskImg.naturalHeight) : 1;
-        const exportRatio = r > 0 ? (1 / r) : 2;
+        const nativeExportRatio = r > 0 ? (1 / r) : 2;
+        const longestStageEdge = Math.max(stageRef.current.width() || 1, stageRef.current.height() || 1);
+        const cappedExportRatio = TEXTURE_EXPORT_MAX_EDGE / longestStageEdge;
+        const exportRatio = Math.max(1, Math.min(nativeExportRatio, cappedExportRatio));
         const overlayCanvas = stageRef.current.toCanvas({ pixelRatio: exportRatio });
         const exportWidth = Math.max(1, Math.round(stageRef.current.width() * exportRatio));
         const exportHeight = Math.max(1, Math.round(stageRef.current.height() * exportRatio));

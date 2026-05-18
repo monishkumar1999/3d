@@ -84,10 +84,57 @@ const DynamicModel = React.memo(({ url, meshTextures, baseTextures, pbrTextures,
 
             // Apply base textures from variants
             if (baseTextures && baseTextures[child.name]) {
-                mat.map = baseTextures[child.name];
+                const bTex = baseTextures[child.name];
+                mat.map = bTex.map || child.userData.originalMat.map || null;
+                mat.normalMap = bTex.normalMap || child.userData.originalMat.normalMap || null;
+                mat.roughnessMap = bTex.roughnessMap || child.userData.originalMat.roughnessMap || null;
+                mat.metalnessMap = bTex.metalnessMap || child.userData.originalMat.metalnessMap || null;
+                mat.aoMap = bTex.aoMap || child.userData.originalMat.aoMap || null;
+
+                if (bTex.roughnessMap) mat.roughness = 1.0;
+                if (bTex.metalnessMap) mat.metalness = 1.0;
+                if (bTex.aoMap) mat.aoMapIntensity = 1.0;
+
+                const repeatVal = bTex.textureRepeat !== undefined ? Number(bTex.textureRepeat) : 1;
+                const applyRepeat = (tex) => {
+                    if (tex) {
+                        tex.wrapS = THREE.RepeatWrapping;
+                        tex.wrapT = THREE.RepeatWrapping;
+                        tex.repeat.set(repeatVal, repeatVal);
+                        tex.needsUpdate = true;
+                    }
+                };
+
+                applyRepeat(mat.map);
+                applyRepeat(mat.normalMap);
+                applyRepeat(mat.roughnessMap);
+                applyRepeat(mat.metalnessMap);
+                applyRepeat(mat.aoMap);
+
+                const nInt = bTex.normalIntensity !== undefined ? Number(bTex.normalIntensity) : 1;
+                
+                if (mat.normalMap) {
+                    mat.normalScale = new THREE.Vector2(nInt, nInt);
+                    if (child.geometry && child.geometry.attributes.uv && !child.geometry.attributes.tangent) {
+                        try {
+                            child.geometry.computeTangents();
+                        } catch (e) {}
+                    }
+                } else {
+                    mat.normalScale = new THREE.Vector2(0, 0);
+                }
+
+                if (mat.aoMap && child.geometry && child.geometry.attributes.uv && !child.geometry.attributes.uv2) {
+                    child.geometry.setAttribute("uv2", child.geometry.attributes.uv);
+                }
             } else {
-                mat.map = child.userData.originalMat.map;
+                mat.map = child.userData.originalMat.map || null;
+                mat.normalMap = child.userData.originalMat.normalMap || null;
+                mat.roughnessMap = child.userData.originalMat.roughnessMap || null;
+                mat.metalnessMap = child.userData.originalMat.metalnessMap || null;
+                mat.aoMap = child.userData.originalMat.aoMap || null;
             }
+
 
             // PBR
             if (pbrTextures) {
@@ -127,41 +174,53 @@ const DynamicModel = React.memo(({ url, meshTextures, baseTextures, pbrTextures,
             if (child.userData[overlayTag]) return; // skip overlays themselves
             const meshName = child.name;
 
-            // Remove any existing overlay children
-            const toRemove = child.children.filter(c => c.userData[overlayTag]);
-            toRemove.forEach(c => {
-                if (c.material) c.material.dispose();
-                child.remove(c);
-            });
-
             const stickerTex = meshTextures[meshName];
-            if (!stickerTex || showOriginal) return;
+            
+            // Find existing overlay
+            let overlay = child.children.find(c => c.userData[overlayTag]);
+
+            if (!stickerTex || showOriginal) {
+                if (overlay) {
+                    if (overlay.material) overlay.material.dispose();
+                    child.remove(overlay);
+                }
+                return;
+            }
 
             const meshMat = meshMaterials[meshName] || {};
             const currentRoughness = meshMat.roughness !== undefined ? meshMat.roughness : (materialSettings.roughness ?? 0.5);
             const currentMetalness = meshMat.metalness !== undefined ? meshMat.metalness : (materialSettings.metalness ?? 0);
             const currentTransmission = meshMat.transmission !== undefined ? meshMat.transmission : 0;
 
-            // Build overlay mesh using the same geometry — identity transform (inherits parent's)
-            const mat = new THREE.MeshPhysicalMaterial({
-                map: stickerTex,
-                transparent: true,
-                depthWrite: false,
-                polygonOffset: true,
-                polygonOffsetFactor: -4,
-                polygonOffsetUnits: -4,
-                side: THREE.DoubleSide,
-                roughness: currentRoughness,
-                metalness: currentMetalness,
-                transmission: currentTransmission,
-                ior: 1.5,
-                thickness: 0.5,
-            });
+            if (overlay) {
+                // FAST PATH: Update existing material map to avoid synchronous shader recompilation freezes!
+                overlay.material.map = stickerTex;
+                overlay.material.roughness = currentRoughness;
+                overlay.material.metalness = currentMetalness;
+                overlay.material.transmission = currentTransmission;
+                overlay.material.needsUpdate = true;
+            } else {
+                // SLOW PATH: First time creation (compiles shader once)
+                const mat = new THREE.MeshPhysicalMaterial({
+                    map: stickerTex,
+                    transparent: true,
+                    depthWrite: false,
+                    polygonOffset: true,
+                    polygonOffsetFactor: -4,
+                    polygonOffsetUnits: -4,
+                    side: THREE.DoubleSide,
+                    roughness: currentRoughness,
+                    metalness: currentMetalness,
+                    transmission: currentTransmission,
+                    ior: 1.5,
+                    thickness: 0.5,
+                });
 
-            const overlay = new THREE.Mesh(child.geometry, mat);
-            overlay.renderOrder = 10;
-            overlay.userData[overlayTag] = true;
-            child.add(overlay); // identity transform → sits exactly on top of parent
+                overlay = new THREE.Mesh(child.geometry, mat);
+                overlay.renderOrder = 10;
+                overlay.userData[overlayTag] = true;
+                child.add(overlay); 
+            }
         });
     }, [clonedScene, meshTextures, meshMaterials, materialSettings, showOriginal]);
 

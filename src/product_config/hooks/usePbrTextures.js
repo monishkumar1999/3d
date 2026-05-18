@@ -11,11 +11,11 @@ import * as THREE from "three";
 
 // PBR slots supported
 export const PBR_SLOTS = [
-    { key: "map",          label: "Diffuse / Base Color", colorSpace: THREE.SRGBColorSpace },
-    { key: "normalMap",    label: "Normal Map",           colorSpace: THREE.LinearSRGBColorSpace },
-    { key: "roughnessMap", label: "Roughness",            colorSpace: THREE.LinearSRGBColorSpace },
-    { key: "metalnessMap", label: "Metalness",            colorSpace: THREE.LinearSRGBColorSpace },
-    { key: "aoMap",        label: "AO (Ambient Occlusion)", colorSpace: THREE.LinearSRGBColorSpace },
+    { key: "map", label: "Diffuse / Base Color", colorSpace: THREE.SRGBColorSpace },
+    { key: "normalMap", label: "Normal Map", colorSpace: THREE.LinearSRGBColorSpace },
+    { key: "roughnessMap", label: "Roughness", colorSpace: THREE.LinearSRGBColorSpace },
+    { key: "metalnessMap", label: "Metalness", colorSpace: THREE.LinearSRGBColorSpace },
+    { key: "aoMap", label: "AO (Ambient Occlusion)", colorSpace: THREE.LinearSRGBColorSpace },
 ];
 
 export function usePbrTextures() {
@@ -28,8 +28,8 @@ export function usePbrTextures() {
             const url = URL.createObjectURL(file);
             const loader = new THREE.TextureLoader();
             loader.load(url, (tex) => {
-                tex.colorSpace  = colorSpace;
-                tex.flipY       = false;
+                tex.colorSpace = colorSpace;
+                tex.flipY = false;
                 tex.needsUpdate = true;
                 URL.revokeObjectURL(url);
                 resolve(tex);
@@ -53,13 +53,26 @@ export function usePbrTextures() {
         }));
     }, [loadTextureFromFile]);
 
-    const clearMesh = useCallback((meshName) => {
+    const applyToAll = useCallback(async (allMeshNames, slot, file) => {
+        if (!file) {
+            setPbrMap(prev => {
+                const next = { ...prev };
+                allMeshNames.forEach(name => {
+                    next[name] = { ...next[name], [slot.key]: null };
+                });
+                return next;
+            });
+            return;
+        }
+        const tex = await loadTextureFromFile(file, slot.colorSpace);
         setPbrMap(prev => {
             const next = { ...prev };
-            delete next[meshName];
+            allMeshNames.forEach(name => {
+                next[name] = { ...next[name], [slot.key]: tex };
+            });
             return next;
         });
-    }, []);
+    }, [loadTextureFromFile]);
 
-    return { pbrMap, applyMap, clearMesh };
+    return { pbrMap, applyMap, applyToAll, clearMesh };
 }

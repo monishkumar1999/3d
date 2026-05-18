@@ -7,6 +7,8 @@ import { Upload, Palette, Image as ImageIcon, X, Save, Camera, Layers, RotateCcw
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
+import { store as reduxStore } from '../../store/redux/store';
+import { startLoading, stopLoading, updateProgress, updateMessage } from '../../store/redux/loaderSlice';
 
 import FloatingTextToolbar from '../../3d/components/FloatingTextToolbar';
 import FloatingImageToolbar from '../../3d/components/FloatingImageToolbar';
@@ -647,7 +649,7 @@ const PbrTextureUploader = React.memo(({ pbrTextures, materialSettings, onUpload
 
             <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                    <span className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider">Texture Repeat</span>
+                    <span className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider">Textures Repeat</span>
                     <span className="text-[10px] font-semibold text-zinc-500">{formatTextureRepeat(materialSettings.textureRepeat || 1)}x</span>
                 </div>
                 <input
@@ -991,33 +993,39 @@ const ModelViewer = React.memo(React.forwardRef(({ modelUrl, textureDataUrl, fla
         };
 
         const runMaterialUpdate = async () => {
-            const [konvaImage, flatMaskImage, normalImage, roughnessImage, metalnessImage, aoImage, ormImage] = await Promise.all([
-                loadOptionalImage(textureDataUrl),
-                loadOptionalImage(flatMaskUrl),
-                loadOptionalImage(pbrTextures.normal?.dataUrl),
-                loadOptionalImage(pbrTextures.roughness?.dataUrl),
-                loadOptionalImage(pbrTextures.metalness?.dataUrl),
-                loadOptionalImage(pbrTextures.ao?.dataUrl),
-                loadOptionalImage(pbrTextures.orm?.dataUrl),
-            ]);
+            try {
+                const [konvaImage, flatMaskImage, normalImage, roughnessImage, metalnessImage, aoImage, ormImage] = await Promise.all([
+                    loadOptionalImage(textureDataUrl),
+                    loadOptionalImage(flatMaskUrl),
+                    loadOptionalImage(pbrTextures.normal?.dataUrl),
+                    loadOptionalImage(pbrTextures.roughness?.dataUrl),
+                    loadOptionalImage(pbrTextures.metalness?.dataUrl),
+                    loadOptionalImage(pbrTextures.ao?.dataUrl),
+                    loadOptionalImage(pbrTextures.orm?.dataUrl),
+                ]);
 
-            if (cancelled) return;
+                if (cancelled) return;
 
-            disposeManagedTextures();
+                disposeManagedTextures();
 
-            const uploadedMapTextures = {
-                normal: createTexture(normalImage, { repeat: textureRepeat }),
-                roughness: createTexture(roughnessImage, { repeat: textureRepeat }),
-                metalness: createTexture(metalnessImage, { repeat: textureRepeat }),
-                ao: createTexture(aoImage, { repeat: textureRepeat }),
-                orm: createTexture(ormImage, { repeat: textureRepeat }),
-            };
+                const uploadedMapTextures = {
+                    normal: createTexture(normalImage, { repeat: textureRepeat }),
+                    roughness: createTexture(roughnessImage, { repeat: textureRepeat }),
+                    metalness: createTexture(metalnessImage, { repeat: textureRepeat }),
+                    ao: createTexture(aoImage, { repeat: textureRepeat }),
+                    orm: createTexture(ormImage, { repeat: textureRepeat }),
+                };
 
-            applyMaterials({
-                konvaTex: createTexture(konvaImage, { colorSpace: THREE.SRGBColorSpace }),
-                flatMaskImage,
-                uploadedMapTextures,
-            });
+                applyMaterials({
+                    konvaTex: createTexture(konvaImage, { colorSpace: THREE.SRGBColorSpace }),
+                    flatMaskImage,
+                    uploadedMapTextures,
+                });
+            } catch (err) {
+                console.error("Material update error:", err);
+            } finally {
+                reduxStore.dispatch(stopLoading());
+            }
         };
 
         runMaterialUpdate();
@@ -1641,6 +1649,12 @@ const TestUVWorkflow = ({ productId, designId: initialDesignId, initialGlbUrl, i
         const file = e.target.files?.[0];
         if (!file) return;
 
+        reduxStore.dispatch(startLoading({
+            title: "Processing PBR Map",
+            message: `Loading and applying ${mapKey} normal/roughness texture...`,
+            type: "texture"
+        }));
+
         try {
             const dataUrl = await readFileAsDataUrl(file);
             const image = await loadImageElement(dataUrl);
@@ -1658,6 +1672,7 @@ const TestUVWorkflow = ({ productId, designId: initialDesignId, initialGlbUrl, i
         } catch (error) {
             console.error(`Failed to upload ${mapKey} texture`, error);
             alert(`Failed to load ${file.name}. Please try another image.`);
+            reduxStore.dispatch(stopLoading());
         } finally {
             e.target.value = null;
         }
@@ -1815,6 +1830,15 @@ const TestUVWorkflow = ({ productId, designId: initialDesignId, initialGlbUrl, i
     // `quality=preview` is fast for interactive updates; `quality=full` is deferred high-quality bake.
     const performExport = useCallback((quality = 'full') => {
         if (!stageRef.current || !maskImg) return;
+
+        if (quality === 'full') {
+            reduxStore.dispatch(startLoading({
+                title: "Baking Live Textures",
+                message: "Regenerating high-resolution texture map from vector canvas...",
+                type: "texture"
+            }));
+        }
+
         if (trRef.current) trRef.current.nodes([]);
         const isPreviewQuality = quality === 'preview';
 

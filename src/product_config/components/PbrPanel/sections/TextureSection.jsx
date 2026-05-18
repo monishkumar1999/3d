@@ -3,16 +3,17 @@ import { X, Trash2 } from "lucide-react";
 import { PBR_SLOTS, useProductConfigStore } from "../../../store/useProductConfigStore";
 import SlotRow from "../atoms/SlotRow";
 
-const TextureSection = memo(({ 
-    selectedMeshId, 
-    activeSet, 
-    activeSetId, 
-    activeMaps, 
-    activeSetHasData, 
+const TextureSection = memo(({
+    selectedMeshId,
+    activeSet,
+    activeSetId,
+    activeMaps,
+    activeSetHasData,
     sets,
     onSetNameChange,
     onUpload,
-    onClear 
+    onApplyToAll,
+    onClear
 }) => {
     const clearPbrSet = useProductConfigStore((state) => state.clearPbrSet);
     const removePbrSet = useProductConfigStore((state) => state.removePbrSet);
@@ -62,6 +63,7 @@ const TextureSection = memo(({
                     slot={slot}
                     hasTexture={!!activeMaps[slot.key]}
                     onUpload={(files) => onUpload(slot, files)}
+                    onApplyToAll={(files) => onApplyToAll(slot, files)}
                     onClear={() => onClear(slot)}
                 />
             ))}

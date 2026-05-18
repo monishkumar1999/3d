@@ -10,6 +10,8 @@
 import { create } from "zustand";
 import * as THREE from "three";
 import { saveProductConfig, getProductNames, getProductDetails, deleteVariant } from "../../api/productConfigApi";
+import { store as reduxStore } from "../../store/redux/store";
+import { startLoading, stopLoading, updateProgress, updateMessage } from "../../store/redux/loaderSlice";
 
 
 // PBR slot definitions shared with UI components via this file.
@@ -182,26 +184,47 @@ export const useProductConfigStore = create((set, get) => ({
 
     fetchProductDetails: async (id) => {
         set({ isSaving: true, saveError: null });
+        reduxStore.dispatch(startLoading({
+            title: "Fetching Product Data",
+            message: "Retrieving configuration and variants from database...",
+            type: "process",
+            progress: 20
+        }));
         try {
             console.log("Fetching product details for:", id);
             const res = await getProductDetails(id);
             console.log("API Response:", res.data);
-            
+
+            reduxStore.dispatch(updateProgress(60));
+
             if (res.data?.success) {
                 const product = res.data.product;
-                set({ 
+                
+                reduxStore.dispatch(updateMessage("Processing and loading 3D model..."));
+                reduxStore.dispatch(updateProgress(80));
+
+                set({
                     glbUrl: product.base_model_url,
                     fileName: product.name,
                     createdProductId: product.id,
                     _pendingVariants: product.variants,
                     isSaving: false
                 });
+
+                // If there are no variants/textures to load, we stop the loading modal now.
+                // Otherwise, setMeshes will take over the loader and stop it when done!
+                const hasVariants = product.variants && product.variants.length > 0;
+                if (!hasVariants) {
+                    reduxStore.dispatch(stopLoading());
+                }
             } else {
                 set({ isSaving: false, saveError: res.data?.message || "Failed to fetch product data" });
+                reduxStore.dispatch(stopLoading());
             }
         } catch (err) {
             console.error("fetchProductDetails error:", err);
             set({ isSaving: false, saveError: "Network error: check if backend is running" });
+            reduxStore.dispatch(stopLoading());
         }
     },
 
@@ -242,7 +265,7 @@ export const useProductConfigStore = create((set, get) => ({
             set({ _pendingVariants: null });
 
             const newPbrSets = { ...nextPbrSets };
-            
+
             // First, ensure all meshes have the correct number of sets (one per variant)
             meshes.forEach(m => {
                 newPbrSets[m.id] = {
@@ -260,36 +283,82 @@ export const useProductConfigStore = create((set, get) => ({
                 }
             });
 
-            // Now, populate the maps from the textures
-            for (let vIdx = 0; vIdx < variants.length; vIdx++) {
-                const variant = variants[vIdx];
-                const setId = vIdx + 1;
+            // Let's count how many texture maps we need to fetch in total
+            let totalTexturesCount = 0;
+            let loadedTexturesCount = 0;
 
-                for (const texture of (variant.textures || [])) {
-                    // Find matching mesh by meshName
+            variants.forEach(variant => {
+                (variant.textures || []).forEach(texture => {
                     const actualMesh = meshes.find(m => m.name === texture.meshName || m.label === texture.meshName);
-                    if (!actualMesh) continue;
+                    if (!actualMesh) return;
 
-                    const pbrSet = newPbrSets[actualMesh.id].sets[vIdx];
-                    if (!pbrSet) continue;
-
-                    // Load textures for each slot
-                    for (const slot of PBR_SLOTS) {
-                        const url = texture[slot.key];
-                        if (url) {
-                            pbrSet.maps[slot.key] = await loadTextureFromUrl(url, slot.colorSpace);
+                    PBR_SLOTS.forEach(slot => {
+                        if (texture[slot.key]) {
+                            totalTexturesCount++;
                         }
-                    }
+                    });
+                });
+            });
 
-                    // Apply settings
-                    pbrSet.settings = {
-                        textureRepeat: parseFloat(texture.textureRepeat) || 1,
-                        normalIntensity: parseFloat(texture.normalIntensity) || 1,
-                    };
+            console.log(`[Store] Total pending variant textures to load: ${totalTexturesCount}`);
+
+            if (totalTexturesCount > 0) {
+                reduxStore.dispatch(startLoading({
+                    title: "Loading Product Textures",
+                    message: `Loading 0 of ${totalTexturesCount} texture maps...`,
+                    type: "texture",
+                    progress: 0
+                }));
+
+                // Now, populate the maps from the textures
+                for (let vIdx = 0; vIdx < variants.length; vIdx++) {
+                    const variant = variants[vIdx];
+                    const setId = vIdx + 1;
+
+                    for (const texture of (variant.textures || [])) {
+                        // Find matching mesh by meshName
+                        const actualMesh = meshes.find(m => m.name === texture.meshName || m.label === texture.meshName);
+                        if (!actualMesh) continue;
+
+                        const pbrSet = newPbrSets[actualMesh.id].sets[vIdx];
+                        if (!pbrSet) continue;
+
+                        // Load textures for each slot
+                        for (const slot of PBR_SLOTS) {
+                            const url = texture[slot.key];
+                            if (url) {
+                                try {
+                                    pbrSet.maps[slot.key] = await loadTextureFromUrl(url, slot.colorSpace);
+                                } catch (err) {
+                                    console.error(`Failed to load texture from url: ${url}`, err);
+                                }
+                                loadedTexturesCount++;
+                                const progressPercent = Math.round((loadedTexturesCount / totalTexturesCount) * 100);
+                                reduxStore.dispatch(updateProgress(progressPercent));
+                                reduxStore.dispatch(updateMessage(`Loaded ${loadedTexturesCount} of ${totalTexturesCount} texture maps...`));
+                            }
+                        }
+
+                        // Apply settings
+                        pbrSet.settings = {
+                            textureRepeat: parseFloat(texture.textureRepeat) || 1,
+                            normalIntensity: parseFloat(texture.normalIntensity) || 1,
+                        };
+                    }
                 }
+
+                set({ pbrSets: newPbrSets });
+
+                // Texture loading fully complete! Stop loader after a tiny delay for smooth animation.
+                reduxStore.dispatch(updateMessage("All textures loaded successfully!"));
+                reduxStore.dispatch(updateProgress(100));
+                setTimeout(() => {
+                    reduxStore.dispatch(stopLoading());
+                }, 600);
+            } else {
+                set({ pbrSets: newPbrSets });
+                reduxStore.dispatch(stopLoading());
             }
-            
-            set({ pbrSets: newPbrSets });
         }
     },
 
@@ -310,7 +379,7 @@ export const useProductConfigStore = create((set, get) => ({
 
         set((state) => {
             const nextPbrSets = { ...state.pbrSets };
-            
+
             targets.forEach(tId => {
                 const meshState = normalizePbrSetState(nextPbrSets[tId]);
                 // Create a completely FRESH set (no copying from active set)
@@ -449,12 +518,21 @@ export const useProductConfigStore = create((set, get) => ({
 
         // CASE: UPLOAD
         console.log(`[Store] Uploading ${files.length} file(s) for slot: ${slot.key}`);
-        
+
+        reduxStore.dispatch(startLoading({
+            title: "Applying Texture",
+            message: `Processing and loading texture for ${slot.label}...`,
+            type: "texture",
+            progress: 10
+        }));
+
         try {
             const loadedMaps = await Promise.all(
-                files.map(async (file) => {
+                files.map(async (file, index) => {
                     try {
                         const texture = await loadTextureFromFile(file, slot.colorSpace);
+                        const percent = 10 + Math.round(((index + 1) / files.length) * 80);
+                        reduxStore.dispatch(updateProgress(percent));
                         return { file, texture };
                     } catch (err) {
                         console.error(`[Store] Failed to load texture: ${file.name}`, err);
@@ -465,15 +543,18 @@ export const useProductConfigStore = create((set, get) => ({
 
             if (loadedMaps.length === 0) {
                 set({ saveError: "Failed to load image file(s)." });
+                reduxStore.dispatch(stopLoading());
                 return;
             }
+
+            reduxStore.dispatch(updateProgress(90));
 
             set((state) => {
                 const nextPbrSets = { ...state.pbrSets };
                 const meshState = normalizePbrSetState(nextPbrSets[meshId]);
                 const targetSetId = setId ?? meshState.activeSetId;
                 const setIndex = meshState.sets.findIndex(s => s.id === targetSetId);
-                
+
                 if (setIndex === -1) return {};
 
                 const nextSets = [...meshState.sets];
@@ -509,10 +590,100 @@ export const useProductConfigStore = create((set, get) => ({
                     }
                 };
             });
+
+            reduxStore.dispatch(updateProgress(100));
+            setTimeout(() => {
+                reduxStore.dispatch(stopLoading());
+            }, 300);
         } catch (globalErr) {
             console.error("[Store] applyMap global error:", globalErr);
             set({ saveError: "An unexpected error occurred during upload." });
+            reduxStore.dispatch(stopLoading());
         }
+    },
+
+    applyMapToAll: async (setId, slot, filesInput) => {
+        const { meshes, selectedMeshId } = get();
+        if (!slot || meshes.length === 0) return;
+
+        // Sets have unique IDs per mesh. We must find the index of the set using the source mesh.
+        const sourceMeshId = selectedMeshId || meshes[0]?.id;
+
+        const files = Array.from(filesInput ?? []).filter(Boolean);
+        let texture = null;
+
+        if (files.length > 0) {
+            reduxStore.dispatch(startLoading({
+                title: "Applying Texture to All Meshes",
+                message: `Loading master texture for ${slot.label}...`,
+                type: "texture",
+                progress: 20
+            }));
+
+            try {
+                texture = await loadTextureFromFile(files[0], slot.colorSpace);
+                reduxStore.dispatch(updateProgress(50));
+            } catch (err) {
+                console.error("[Store] applyMapToAll load error:", err);
+                set({ saveError: "Failed to load texture for all meshes." });
+                reduxStore.dispatch(stopLoading());
+                return;
+            }
+        }
+
+        set((state) => {
+            const nextPbrSets = { ...state.pbrSets };
+            const sourceMeshState = normalizePbrSetState(nextPbrSets[sourceMeshId]);
+            const targetSetId = setId ?? sourceMeshState.activeSetId;
+            const selectedIndex = sourceMeshState.sets.findIndex(s => s.id === targetSetId);
+
+            if (selectedIndex === -1) return {};
+
+            const totalMeshes = meshes.length;
+            meshes.forEach((m, idx) => {
+                const meshState = normalizePbrSetState(nextPbrSets[m.id]);
+                // target the same index for this mesh
+                const setIndex = selectedIndex < meshState.sets.length ? selectedIndex : meshState.sets.length - 1;
+                
+                if (setIndex >= 0) {
+                    const nextSets = [...meshState.sets];
+                    const currentSet = { ...nextSets[setIndex] };
+                    const nextMaps = { ...currentSet.maps };
+                    
+                    if (files.length === 0) {
+                        // Clear slot
+                        if (nextMaps[slot.key]?.dispose) nextMaps[slot.key].dispose();
+                        delete nextMaps[slot.key];
+                    } else if (texture) {
+                        if (nextMaps[slot.key]?.dispose) nextMaps[slot.key].dispose();
+                        // Clone the texture so each mesh has its own instance. 
+                        // This prevents one mesh's .dispose() from breaking others.
+                        const clonedTexture = texture.clone();
+                        clonedTexture.needsUpdate = true;
+                        nextMaps[slot.key] = clonedTexture;
+                    }
+                    
+                    // Auto-rename set if it's still using a default name
+                    let nextSetName = currentSet.name;
+                    if (files.length > 0 && !pbrSetHasMaps(currentSet) && isDefaultPbrSetName(currentSet.name)) {
+                        nextSetName = getPbrSetNameFromFile(files[0], currentSet.name);
+                    }
+
+                    nextSets[setIndex] = { ...currentSet, name: nextSetName, maps: nextMaps };
+                    nextPbrSets[m.id] = { ...meshState, sets: nextSets };
+                }
+
+                const percent = 50 + Math.round(((idx + 1) / totalMeshes) * 45);
+                reduxStore.dispatch(updateProgress(percent));
+            });
+
+            return { pbrSets: nextPbrSets };
+        });
+
+        reduxStore.dispatch(updateProgress(100));
+        setTimeout(() => {
+            reduxStore.dispatch(stopLoading());
+        }, 300);
     },
 
     clearMeshPbr: (meshId) =>
@@ -574,7 +745,6 @@ export const useProductConfigStore = create((set, get) => ({
             return;
         }
 
-
         if (isCreate && !productName?.trim()) {
             set({ saveError: "Please enter a product name.", saveSuccess: false });
             return;
@@ -582,12 +752,19 @@ export const useProductConfigStore = create((set, get) => ({
 
         set({ isSaving: true, saveError: null, saveSuccess: false });
 
+        reduxStore.dispatch(startLoading({
+            title: "Saving Configuration",
+            message: "Initializing save operation...",
+            type: "save",
+            progress: 5
+        }));
+
         try {
             const fd = new FormData();
             fd.append("glb_file", glbFile);
 
             // Backend uses product_id (update) OR product_name (create) to decide
-            if (productId)              fd.append("product_id",   productId);
+            if (productId) fd.append("product_id", productId);
             if (isCreate && productName) fd.append("product_name", productName.trim());
 
             // Variant name — optional override for the variant naming
@@ -595,6 +772,7 @@ export const useProductConfigStore = create((set, get) => ({
 
             // Build mesh + PBR texture entries
             const blobPromises = [];
+            const totalMeshes = meshes.length;
 
             meshes.forEach((mesh, meshIdx) => {
                 fd.append(`meshes[${meshIdx}][name]`, mesh.label ?? mesh.id);
@@ -602,15 +780,15 @@ export const useProductConfigStore = create((set, get) => ({
                 const meshState = normalizePbrSetState(pbrSets[mesh.id]);
                 meshState.sets.forEach((pbrSet, setIdx) => {
                     const prefix = `meshes[${meshIdx}][sets][${setIdx}]`;
-                    fd.append(`${prefix}[name]`,            pbrSet.name ?? `Set ${setIdx + 1}`);
-                    fd.append(`${prefix}[textureRepeat]`,   pbrSet.settings?.textureRepeat  ?? 1);
+                    fd.append(`${prefix}[name]`, pbrSet.name ?? `Set ${setIdx + 1}`);
+                    fd.append(`${prefix}[textureRepeat]`, pbrSet.settings?.textureRepeat ?? 1);
                     fd.append(`${prefix}[normalIntensity]`, pbrSet.settings?.normalIntensity ?? 1);
 
                     PBR_SLOTS.forEach((slot) => {
                         const tex = pbrSet.maps?.[slot.key];
                         if (tex?.image) {
                             const canvas = document.createElement("canvas");
-                            canvas.width  = tex.image.width  || 512;
+                            canvas.width = tex.image.width || 512;
                             canvas.height = tex.image.height || 512;
                             canvas.getContext("2d").drawImage(tex.image, 0, 0);
                             blobPromises.push(
@@ -627,7 +805,13 @@ export const useProductConfigStore = create((set, get) => ({
             });
 
             // Wait for ALL canvas.toBlob() calls to resolve before sending
+            reduxStore.dispatch(updateMessage("Converting textures to PNG format..."));
+            reduxStore.dispatch(updateProgress(30));
+
             await Promise.all(blobPromises);
+
+            reduxStore.dispatch(updateMessage("Uploading files and saving to database..."));
+            reduxStore.dispatch(updateProgress(60));
 
             // Single endpoint handles create AND update
             const response = await saveProductConfig(fd);
@@ -639,10 +823,18 @@ export const useProductConfigStore = create((set, get) => ({
             }
 
             set({ isSaving: false, saveSuccess: true, saveError: null });
+
+            reduxStore.dispatch(updateMessage("Saved successfully!"));
+            reduxStore.dispatch(updateProgress(100));
+            setTimeout(() => {
+                reduxStore.dispatch(stopLoading());
+            }, 600);
+
             setTimeout(() => set({ saveSuccess: false }), 3000);
         } catch (err) {
             const msg = err?.response?.data?.message ?? err?.message ?? "Save failed.";
             set({ isSaving: false, saveError: msg, saveSuccess: false });
+            reduxStore.dispatch(stopLoading());
         }
     },
 }));

@@ -79,6 +79,44 @@ export const useStore = create((set, get) => ({
   // UI State
   activeStickerUrl: null, // Temp holder for drag-n-drop
   setActiveStickerUrl: (url) => set({ activeStickerUrl: url }),
+
+  // PatternZone Per-Mesh State
+  patternStates: {},
+  initPatternState: (meshName) => set((state) => {
+    if (state.patternStates[meshName]) return state;
+    return {
+      patternStates: {
+        ...state.patternStates,
+        [meshName]: {
+          stickers: [],
+          textNodes: [],
+          zones: [],
+          zoneMode: null,
+          drawingRect: null,
+          polyPoints: [],
+          cursorPos: null,
+          selectedZoneId: null,
+          selectedId: null,
+        }
+      }
+    };
+  }),
+  updatePatternState: (meshName, updates) => set((state) => {
+    const currentState = state.patternStates[meshName] || {
+      stickers: [], textNodes: [], zones: [], zoneMode: null,
+      drawingRect: null, polyPoints: [], cursorPos: null, selectedZoneId: null, selectedId: null
+    };
+    const newUpdates = typeof updates === 'function' ? updates(currentState) : updates;
+    return {
+      patternStates: {
+        ...state.patternStates,
+        [meshName]: {
+          ...currentState,
+          ...newUpdates
+        }
+      }
+    };
+  }),
 }));
 
 export default useStore;
