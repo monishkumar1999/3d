@@ -21,35 +21,52 @@ export const usePatternExport = ({
     const performExport = useCallback(async () => {
         if (!stageRef.current || !maskImg) return;
 
+        // Step 1: Hide transformer handles so they don't appear on the 3D model
         if (trRef.current) trRef.current.nodes([]);
 
-        const layer = stageRef.current.getLayers()[1]; // Layer 1 is the 'texture-layer' (pure stickers, no wireframe)
+        const layer = stageRef.current.getLayers()[1]; // Layer 1 = 'texture-layer'
         if (!layer) return;
 
-        const zoneNodes = layer.find('.zone-shape');
-        zoneNodes.forEach(n => n.hide());
+        // Step 2: Redraw the layer cleanly (no handles, no zone shapes)
+        layer.batchDraw();
 
         if (stickersRef.current.length > 0 || textNodesRef.current.length > 0) {
-            // ZERO-COPY PIPELINE: Instead of generating a new canvas buffer with heavy pixel manipulation,
-            // we simply grab the native HTML <canvas> element that Konva is already drawing to!
-            // This drops the export time from ~300ms down to 0ms.
-            const nativeCanvas = layer.getNativeCanvasElement ? layer.getNativeCanvasElement() : (layer.canvas && layer.canvas._canvas);
-            
+            // SNAPSHOT APPROACH: Copy the current canvas to a NEW offscreen canvas.
+            // This is critical — if we pass the live native canvas directly to THREE.js,
+            // Three uploads it to the GPU on the NEXT frame, by which time the transformer
+            // handles have already been restored — causing them to appear on the 3D model.
+            const nativeCanvas = layer.getNativeCanvasElement
+                ? layer.getNativeCanvasElement()
+                : (layer.canvas && layer.canvas._canvas);
+
             if (nativeCanvas) {
-                onUpdateTexture(meshName, nativeCanvas);
+                // Create a clean snapshot canvas that won't be mutated after this point
+                const snapshot = document.createElement('canvas');
+                snapshot.width = nativeCanvas.width;
+                snapshot.height = nativeCanvas.height;
+                const ctx = snapshot.getContext('2d');
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.drawImage(nativeCanvas, 0, 0);
+                onUpdateTexture(meshName, snapshot);
             } else {
-                // Fallback if Konva API changes
-                const stageCanvas = stageRef.current.toCanvas({ pixelRatio: 1 });
-                onUpdateTexture(meshName, stageCanvas);
+                // Fallback: Konva's own toCanvas (already a clean copy)
+                const exportCanvas = layer.toCanvas({ pixelRatio: 1 });
+                onUpdateTexture(meshName, exportCanvas);
             }
         } else {
             onUpdateTexture(meshName, null);
         }
 
-        if (selectedId && trRef.current) {
+        // Step 3: Restore transformer on the selected node AFTER snapshot is taken
+        if (selectedId && trRef.current && stageRef.current) {
             const node = stageRef.current.findOne('#' + selectedId);
-            if (node) { trRef.current.nodes([node]); trRef.current.getLayer()?.batchDraw(); }
+            if (node) {
+                trRef.current.nodes([node]);
+                trRef.current.getLayer()?.batchDraw();
+            }
         }
+
     }, [maskImg, meshName, onUpdateTexture, selectedId, stageRef, uiScale, displayW, displayH, stickersRef, textNodesRef, zonesRef, trRef]);
 
     const triggerExport = useStableDebounce(performExport, 250);

@@ -27,12 +27,13 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
     const stickersRef = useRef(stickers); stickersRef.current = stickers;
     const textNodesRef = useRef(textNodes); textNodesRef.current = textNodes;
     const zonesRef = useRef(zones); zonesRef.current = zones;
+    const onStickerAddedRef = useRef(onStickerAdded); onStickerAddedRef.current = onStickerAdded;
 
     useEffect(() => {
         initPatternState(meshName);
     }, [meshName, initPatternState]);
 
-    const maxSize = 340;
+    const maxSize = 450;
     const uiScale = maskImg ? Math.min(maxSize / maskImg.naturalWidth, maxSize / maskImg.naturalHeight) : 1;
     const displayW = maskImg ? maskImg.naturalWidth * uiScale : 300;
     const displayH = maskImg ? maskImg.naturalHeight * uiScale : 300;
@@ -71,10 +72,18 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
         const img = new window.Image();
         img.src = stickerUrl;
         img.decode().then(() => {
+            // Size sticker proportional to mask (50% of shorter mask dimension) and preserve aspect ratio
+            const maskW = maskImg ? maskImg.naturalWidth : 1000;
+            const maskH = maskImg ? maskImg.naturalHeight : 1000;
+            const baseSize = Math.min(maskW, maskH) * 0.5;
+            const imgAspect = img.naturalWidth / (img.naturalHeight || 1);
+            const stickerW = imgAspect >= 1 ? baseSize : baseSize * imgAspect;
+            const stickerH = imgAspect >= 1 ? baseSize / imgAspect : baseSize;
+
             const newSticker = {
                 id: 'sticker_' + Date.now(), image: img,
-                x: maskImg ? maskImg.naturalWidth / 2 - 200 : 500, y: maskImg ? maskImg.naturalHeight / 2 - 200 : 500,
-                width: 400, height: 400, rotation: 0
+                x: maskW / 2 - stickerW / 2, y: maskH / 2 - stickerH / 2,
+                width: stickerW, height: stickerH, rotation: 0
             };
             updatePatternState(meshName, prev => ({ stickers: [...prev.stickers, newSticker], selectedId: newSticker.id }));
             if (onStickerAddedRef.current) onStickerAddedRef.current();
@@ -82,10 +91,17 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
         }).catch(err => {
             console.error("Failed to decode image asynchronously:", err);
             // Fallback for extremely weird formats
+            const maskW = maskImg ? maskImg.naturalWidth : 1000;
+            const maskH = maskImg ? maskImg.naturalHeight : 1000;
+            const baseSize = Math.min(maskW, maskH) * 0.5;
+            const imgAspect = img.naturalWidth / (img.naturalHeight || 1);
+            const stickerW = imgAspect >= 1 ? baseSize : baseSize * imgAspect;
+            const stickerH = imgAspect >= 1 ? baseSize / imgAspect : baseSize;
+
             const newSticker = {
                 id: 'sticker_' + Date.now(), image: img,
-                x: maskImg ? maskImg.naturalWidth / 2 - 200 : 500, y: maskImg ? maskImg.naturalHeight / 2 - 200 : 500,
-                width: 400, height: 400, rotation: 0
+                x: maskW / 2 - stickerW / 2, y: maskH / 2 - stickerH / 2,
+                width: stickerW, height: stickerH, rotation: 0
             };
             updatePatternState(meshName, prev => ({ stickers: [...prev.stickers, newSticker], selectedId: newSticker.id }));
             if (onStickerAddedRef.current) onStickerAddedRef.current();

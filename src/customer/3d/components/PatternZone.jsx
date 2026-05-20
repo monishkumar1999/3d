@@ -236,7 +236,7 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, textToPlace, onUpdateTextu
         if (trRef.current) trRef.current.nodes([]);
 
         const exportRatio = ratio > 0 ? (1 / ratio) : 2;
-        const TARGET_MAX_SIZE = 1024;
+        const TARGET_MAX_SIZE = 2048;
         const finalExportRatio = Math.min(exportRatio, TARGET_MAX_SIZE / Math.max(w, h));
 
         const uri = stageRef.current.toDataURL({ pixelRatio: finalExportRatio });

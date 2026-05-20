@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { Stage, Layer, Image as KImage, Transformer, Rect, Line, Text, Group } from "react-konva";
 import useStore from "../../store/useStore";
 
@@ -19,9 +19,27 @@ export const PatternKonva = ({
     } = meshState;
 
     // Calculate a high-quality pixel ratio for the internal canvas so the 3D model looks crisp.
-    // displayW is usually ~340px. A pixelRatio of 6 creates a ~2048x2048 texture.
-    const targetResolution = 2048;
-    const customPixelRatio = Math.min(targetResolution / displayW, (maskImg ? maskImg.naturalWidth / displayW : 4));
+    // displayW is usually ~450px. pixelRatio of 9 → ~4096px internal canvas.
+    const targetResolution = 4096;
+    const customPixelRatio = Math.max(4, Math.min(targetResolution / displayW, 12));
+
+    // Set high-quality image smoothing on all layer canvases for crisp sticker rendering
+    useEffect(() => {
+        if (!stageRef.current) return;
+        stageRef.current.getLayers().forEach(layer => {
+            const canvas = layer.getCanvas();
+            if (canvas && canvas.getContext) {
+                const ctx = canvas.getContext();
+                if (ctx) {
+                    ctx.imageSmoothingEnabled = true;
+                    ctx.imageSmoothingQuality = 'high';
+                }
+            }
+        });
+    });
+
+    // Anchor size adapted so handles are comfortably clickable at any uiScale
+    const anchorSize = Math.max(8, Math.round(12 / uiScale));
 
     return (
         <Stage
@@ -96,6 +114,7 @@ export const PatternKonva = ({
                 }));
             }}
         >
+            {/* Layer 0: Background wireframe only (never exported) */}
             <Layer name="ui-background">
                 {wireframeImg && (
                     <KImage name="wireframe" image={wireframeImg} width={wireframeImg.naturalWidth} height={wireframeImg.naturalHeight}
@@ -103,6 +122,7 @@ export const PatternKonva = ({
                 )}
             </Layer>
 
+            {/* Layer 1: Texture layer — stickers + Transformer lives HERE so resize works */}
             <Layer name="texture-layer">
                 <Group clipFunc={(ctx) => {
                     if (zones.length === 0) {
@@ -121,24 +141,31 @@ export const PatternKonva = ({
                     {stickers.map(s => (
                         <KImage key={s.id} id={s.id} image={s.image} x={s.x} y={s.y} width={s.width} height={s.height}
                             opacity={s.opacity ?? 1} rotation={s.rotation} draggable={!zoneMode} listening={!zoneMode}
-                            onClick={() => updatePatternState(meshName, { selectedId: s.id })}
+                            onClick={(e) => {
+                                e.cancelBubble = true;
+                                updatePatternState(meshName, { selectedId: s.id });
+                            }}
                             onDragEnd={(e) => {
                                 updatePatternState(meshName, prev => ({ stickers: prev.stickers.map(st => st.id === s.id ? { ...st, x: e.target.x(), y: e.target.y() } : st) }));
                                 triggerExport();
                             }}
                             onTransformEnd={(e) => {
                                 const n = e.target;
-                                const newW = Math.max(5, n.width() * n.scaleX());
-                                const newH = Math.max(5, n.height() * n.scaleY());
+                                const newW = Math.max(20, n.width() * n.scaleX());
+                                const newH = Math.max(20, n.height() * n.scaleY());
                                 n.scaleX(1); n.scaleY(1);
                                 updatePatternState(meshName, prev => ({ stickers: prev.stickers.map(st => st.id === s.id ? { ...st, x: n.x(), y: n.y(), width: newW, height: newH, rotation: n.rotation() } : st) }));
                                 setTimeout(() => triggerExport(), 50);
-                            }} />
+                            }}
+                        />
                     ))}
                     {textNodes.map(t => (
                         <Text key={t.id} id={t.id} text={t.text} x={t.x} y={t.y} fontSize={t.fontSize} fill={t.fill}
                             fontFamily={t.fontFamily} opacity={t.opacity ?? 1} rotation={t.rotation} draggable={!zoneMode} listening={!zoneMode} fontStyle="bold"
-                            onClick={() => updatePatternState(meshName, { selectedId: t.id })}
+                            onClick={(e) => {
+                                e.cancelBubble = true;
+                                updatePatternState(meshName, { selectedId: t.id });
+                            }}
                             onDragEnd={(e) => {
                                 updatePatternState(meshName, prev => ({ textNodes: prev.textNodes.map(tn => tn.id === t.id ? { ...tn, x: e.target.x(), y: e.target.y() } : tn) }));
                                 triggerExport();
@@ -149,11 +176,34 @@ export const PatternKonva = ({
                                 n.scaleX(1); n.scaleY(1);
                                 updatePatternState(meshName, prev => ({ textNodes: prev.textNodes.map(tn => tn.id === t.id ? { ...tn, x: n.x(), y: n.y(), fontSize: newSize, rotation: n.rotation() } : tn) }));
                                 setTimeout(() => triggerExport(), 50);
-                            }} />
+                            }}
+                        />
                     ))}
                 </Group>
+
+                {/* Transformer is in the SAME layer as stickers — this is required for resize to work */}
+                <Transformer
+                    ref={trRef}
+                    borderStroke="#4f46e5"
+                    anchorStroke="#4f46e5"
+                    anchorFill="#ffffff"
+                    anchorSize={anchorSize}
+                    anchorCornerRadius={3}
+                    borderDash={[4 / uiScale, 4 / uiScale]}
+                    borderStrokeWidth={2 / uiScale}
+                    keepRatio={true}
+                    rotateEnabled={true}
+                    rotateAnchorOffset={30 / uiScale}
+                    enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right']}
+                    boundBoxFunc={(oldBox, newBox) => {
+                        // Minimum size of 20px in canvas units
+                        if (newBox.width < 20 || newBox.height < 20) return oldBox;
+                        return newBox;
+                    }}
+                />
             </Layer>
 
+            {/* Layer 2: Zone overlays only (never exported as texture) */}
             <Layer name="ui-foreground">
                 {zones.map(zone => (
                     zone.type === 'rect' ? (
@@ -191,11 +241,11 @@ export const PatternKonva = ({
                     </>
                 )}
 
-                <Group opacity={0.15}>
+                {/* Ghost overlay for visual reference */}
+                <Group opacity={0.12}>
                     {stickers.map(s => <KImage key={s.id + '_dull'} image={s.image} x={s.x} y={s.y} width={s.width} height={s.height} rotation={s.rotation} listening={false} />)}
                     {textNodes.map(t => <Text key={t.id + '_dull'} text={t.text} x={t.x} y={t.y} fontSize={t.fontSize} fill={t.fill} fontFamily={t.fontFamily} rotation={t.rotation} fontStyle="bold" listening={false} />)}
                 </Group>
-                <Transformer ref={trRef} borderStroke="#4f46e5" anchorStroke="#4f46e5" anchorFill="#ffffff" anchorSize={8} borderDash={[2, 2]} />
             </Layer>
         </Stage>
     );

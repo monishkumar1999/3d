@@ -41,6 +41,11 @@ export const useUvHandlers = (glbUrl, setGlbUrl, setMeshList, setMeshConfig, set
       const tex = new THREE.Texture(dataOrCanvas);
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.flipY = false;
+      // High-quality filtering: mipmaps + anisotropy for crisp stickers at all angles
+      tex.generateMipmaps = true;
+      tex.minFilter = THREE.LinearMipmapLinearFilter;
+      tex.magFilter = THREE.LinearFilter;
+      tex.anisotropy = 16;
       tex.needsUpdate = true;
       setMeshTextures(prev => ({ ...prev, [meshName]: tex }));
     } else {
@@ -49,6 +54,11 @@ export const useUvHandlers = (glbUrl, setGlbUrl, setMeshList, setMeshConfig, set
         const tex = new THREE.Texture(img);
         tex.colorSpace = THREE.SRGBColorSpace;
         tex.flipY = false;
+        // High-quality filtering: mipmaps + anisotropy for crisp stickers at all angles
+        tex.generateMipmaps = true;
+        tex.minFilter = THREE.LinearMipmapLinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        tex.anisotropy = 16;
         tex.needsUpdate = true;
         setMeshTextures(prev => ({ ...prev, [meshName]: tex }));
       };

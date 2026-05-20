@@ -366,7 +366,7 @@ const DesignPhase = ({ productId, glbUrl, meshConfig, meshTextures, baseTextures
                                 toneMapping: 3, // THREE.ACESFilmicToneMapping
                                 toneMappingExposure: 1
                             }}
-                            dpr={[1, 1.5]}
+                            dpr={[1, 2]}
                         >
                             <ambientLight intensity={0.3} />
                             <directionalLight
