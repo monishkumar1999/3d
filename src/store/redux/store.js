@@ -1,9 +1,11 @@
 import { configureStore } from '@reduxjs/toolkit';
 import loaderReducer from './loaderSlice';
+import uvMapReducer from './uvMapSlice';
 
 export const store = configureStore({
   reducer: {
     loader: loaderReducer,
+    uvMap: uvMapReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
@@ -12,3 +14,4 @@ export const store = configureStore({
 });
 
 export default store;
+

@@ -1,14 +1,12 @@
 import React from "react";
 import { Routes, Route, Navigate, Outlet } from "react-router-dom";
 import Layout from "../components/layout/Layout"; // <--- Import Layout here
-import UvMap from "../3d/UvMap";
+import UvMap from "../product_config/uvMap/UvMap";
 import { Logins } from "../components/auth/Logins";
 import CategoryManager from "../components/admin/CategoryManager";
 import SubCategoryManager from "../components/admin/SubCategoryManager";
 import ProductList from "../components/products/ProductList";
 import ProductEditor from "../components/products/ProductEditor";
-import TestUVWorkflow from "../3d/components/TestUVWorkflow";
-import MainTestComponent from "../3d/components/mainTestCOmponent";
 import SvgConverter from "../components/SvgConverter";
 import GlbMeshInspector from "../product_config/GlbMeshInspector";
 import ProductConfigList from "../product_config/ProductConfigList";
@@ -28,10 +26,6 @@ const AppRoutes = () => {
     <Routes>
       <Route path="/login" element={<Logins />} />
       <Route element={<ProtectedRoutesWithLayout />}>
-        {/* Redirect root path to catalog for logged-in users */}
-        <Route path="/test-uv" element={<TestUVWorkflow />} />
-        <Route path="/mainTest" element={<MainTestComponent />} />
-
         <Route path="/categories" element={<CategoryManager />} />
         <Route path="/subcategories" element={<SubCategoryManager />} />
         <Route path="/products" element={<ProductList />} />
