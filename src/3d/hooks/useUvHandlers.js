@@ -16,7 +16,7 @@ export const useUvHandlers = (glbUrl, setGlbUrl, setMeshList, setMeshConfig, set
   const handleMaskUpload = useCallback((meshName, e) => {
     const file = e.target.files[0];
     if (file) {
-      optimizeImage(file, 1024, 0.8)
+      optimizeImage(file, 2048, 0.9)
         .then(blob => {
           setMeshConfig(prev => ({ ...prev, [meshName]: { ...prev[meshName], maskUrl: URL.createObjectURL(blob) } }));
         })

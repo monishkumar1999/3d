@@ -1,4 +1,5 @@
 import { useCallback, useRef } from "react";
+import useStore from "../../store/useStore";
 
 // Stable debounce that always calls the LATEST version of the callback
 function useStableDebounce(fn, delay) {
@@ -16,58 +17,50 @@ function useStableDebounce(fn, delay) {
 
 export const usePatternExport = ({
     stageRef, maskImg, uiScale, displayW, displayH,
-    stickersRef, textNodesRef, zonesRef, meshName, onUpdateTexture, selectedId, trRef
+    stickersRef, textNodesRef, zonesRef, meshName, onUpdateTexture, trRef
 }) => {
+    const EXPORT_SIZE = 2048;
+
     const performExport = useCallback(async () => {
         if (!stageRef.current || !maskImg) return;
 
-        // Step 1: Hide transformer handles so they don't appear on the 3D model
+        // Read selectedId directly from the store — never stale
+        const currentSelectedId = useStore.getState().patternStates[meshName]?.selectedId;
+
+        // Step 1: Hide transformer so it doesn't bake into the texture
         if (trRef.current) trRef.current.nodes([]);
 
-        const layer = stageRef.current.getLayers()[1]; // Layer 1 = 'texture-layer'
-        if (!layer) return;
+        const textureLayer = stageRef.current.getLayers()[1];
+        if (!textureLayer) return;
 
-        // Step 2: Redraw the layer cleanly (no handles, no zone shapes)
-        layer.batchDraw();
+        const hasContent = stickersRef.current.length > 0 || textNodesRef.current.length > 0;
 
-        if (stickersRef.current.length > 0 || textNodesRef.current.length > 0) {
-            // SNAPSHOT APPROACH: Copy the current canvas to a NEW offscreen canvas.
-            // This is critical — if we pass the live native canvas directly to THREE.js,
-            // Three uploads it to the GPU on the NEXT frame, by which time the transformer
-            // handles have already been restored — causing them to appear on the 3D model.
-            const nativeCanvas = layer.getNativeCanvasElement
-                ? layer.getNativeCanvasElement()
-                : (layer.canvas && layer.canvas._canvas);
-
-            if (nativeCanvas) {
-                // Create a clean snapshot canvas that won't be mutated after this point
-                const snapshot = document.createElement('canvas');
-                snapshot.width = nativeCanvas.width;
-                snapshot.height = nativeCanvas.height;
-                const ctx = snapshot.getContext('2d');
-                ctx.imageSmoothingEnabled = true;
-                ctx.imageSmoothingQuality = 'high';
-                ctx.drawImage(nativeCanvas, 0, 0);
-                onUpdateTexture(meshName, snapshot);
-            } else {
-                // Fallback: Konva's own toCanvas (already a clean copy)
-                const exportCanvas = layer.toCanvas({ pixelRatio: 1 });
-                onUpdateTexture(meshName, exportCanvas);
-            }
-        } else {
+        if (!hasContent) {
             onUpdateTexture(meshName, null);
+        } else {
+            // Redraw layer with transformer hidden
+            textureLayer.batchDraw();
+
+            const exportPixelRatio = EXPORT_SIZE / displayW;
+
+            const exportCanvas = textureLayer.toCanvas({
+                pixelRatio: exportPixelRatio,
+                imageSmoothingEnabled: true,
+            });
+
+            onUpdateTexture(meshName, exportCanvas);
         }
 
-        // Step 3: Restore transformer on the selected node AFTER snapshot is taken
-        if (selectedId && trRef.current && stageRef.current) {
-            const node = stageRef.current.findOne('#' + selectedId);
+        // Step 2: Restore transformer on the selected node
+        if (currentSelectedId && trRef.current && stageRef.current) {
+            const node = stageRef.current.findOne('#' + currentSelectedId);
             if (node) {
                 trRef.current.nodes([node]);
                 trRef.current.getLayer()?.batchDraw();
             }
         }
 
-    }, [maskImg, meshName, onUpdateTexture, selectedId, stageRef, uiScale, displayW, displayH, stickersRef, textNodesRef, zonesRef, trRef]);
+    }, [maskImg, meshName, onUpdateTexture, stageRef, uiScale, displayW, displayH, stickersRef, textNodesRef, zonesRef, trRef]);
 
     const triggerExport = useStableDebounce(performExport, 250);
 

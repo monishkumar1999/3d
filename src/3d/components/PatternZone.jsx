@@ -40,7 +40,7 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
 
     const { triggerExport } = usePatternExport({
         stageRef, maskImg, uiScale, displayW, displayH,
-        stickersRef, textNodesRef, zonesRef, meshName, onUpdateTexture, selectedId, trRef
+        stickersRef, textNodesRef, zonesRef, meshName, onUpdateTexture, trRef
     });
 
     useEffect(() => {
@@ -109,14 +109,6 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
         });
     }, [stickerUrl, maskImg, meshName, updatePatternState, triggerExport]);
 
-    useEffect(() => {
-        if (!zoneMode && selectedId && trRef.current && stageRef.current) {
-            const node = stageRef.current.findOne('#' + selectedId);
-            if (node) { trRef.current.nodes([node]); trRef.current.getLayer().batchDraw(); }
-        } else if (trRef.current) {
-            trRef.current.nodes([]);
-        }
-    }, [selectedId, stickers, zoneMode]);
 
     useEffect(() => {
         if (!zoneMode) setTimeout(() => triggerExport(), 100);
