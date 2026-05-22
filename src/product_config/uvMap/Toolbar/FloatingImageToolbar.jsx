@@ -11,23 +11,17 @@ const FloatingImageToolbar = ({
     const [showOpacity, setShowOpacity] = useState(false);
     const toolbarRef = useRef(null);
     const [zIndex, setZIndex] = useState(500);
-
     const screenPos = useScreenPosition(containerRef, position);
 
     useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (toolbarRef.current && !toolbarRef.current.contains(event.target)) {
-                setShowMore(false);
-                setShowOpacity(false);
+        const onClickOutside = (e) => {
+            if (toolbarRef.current && !toolbarRef.current.contains(e.target)) {
+                setShowMore(false); setShowOpacity(false);
             }
         };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        document.addEventListener('mousedown', onClickOutside);
+        return () => document.removeEventListener('mousedown', onClickOutside);
     }, []);
-
-    const updateSticker = (key, value) => {
-        onChange({ [key]: value });
-    };
 
     if (!sticker || !screenPos) return null;
 
@@ -35,24 +29,14 @@ const FloatingImageToolbar = ({
         <div
             ref={toolbarRef}
             className="fixed flex flex-col items-center animate-in fade-in zoom-in-95 duration-200"
-            style={{
-                left: screenPos.left,
-                top: screenPos.top,
-                transform: 'translate(-50%, -100%) translateY(-12px)',
-                zIndex: zIndex
-            }}
+            style={{ left: screenPos.left, top: screenPos.top, transform: 'translate(-50%, -100%) translateY(-12px)', zIndex }}
             onMouseDown={(e) => { e.stopPropagation(); setZIndex(1000); }}
             onTouchStart={(e) => { e.stopPropagation(); setZIndex(1000); }}
         >
             <div className="flex items-center gap-1 p-1 bg-[#1e1e1e] rounded-full shadow-2xl border border-zinc-700/50 text-white">
                 <div className="relative">
                     <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            const nextState = !showOpacity;
-                            setShowOpacity(nextState);
-                            if (nextState) setShowMore(false);
-                        }}
+                        onClick={(e) => { e.stopPropagation(); setShowOpacity(!showOpacity); setShowMore(false); }}
                         className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showOpacity ? 'bg-zinc-800' : 'hover:bg-zinc-800 text-zinc-300'}`}
                         title="Opacity"
                     >
@@ -69,12 +53,8 @@ const FloatingImageToolbar = ({
                                 <span>{Math.round((sticker.opacity ?? 1) * 100)}%</span>
                             </div>
                             <input
-                                type="range"
-                                min="0"
-                                max="1"
-                                step="0.01"
-                                value={sticker.opacity ?? 1}
-                                onChange={(e) => updateSticker('opacity', parseFloat(e.target.value))}
+                                type="range" min="0" max="1" step="0.01" value={sticker.opacity ?? 1}
+                                onChange={(e) => onChange({ opacity: parseFloat(e.target.value) })}
                                 className="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none accent-indigo-500 cursor-pointer"
                             />
                         </div>
@@ -85,12 +65,7 @@ const FloatingImageToolbar = ({
 
                 <div className="relative">
                     <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            const nextState = !showMore;
-                            setShowMore(nextState);
-                            if (nextState) setShowOpacity(false);
-                        }}
+                        onClick={(e) => { e.stopPropagation(); setShowMore(!showMore); setShowOpacity(false); }}
                         className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showMore ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
                     >
                         <MoreHorizontal size={16} />
@@ -98,19 +73,13 @@ const FloatingImageToolbar = ({
 
                     {showMore && (
                         <FloatingImageMoreMenu
-                            onDuplicate={onDuplicate}
-                            onDelete={onDelete}
-                            onMoveToFront={onMoveToFront}
-                            onMoveForward={onMoveForward}
-                            onMoveBackward={onMoveBackward}
-                            onMoveToBack={onMoveToBack}
+                            onDuplicate={onDuplicate} onDelete={onDelete} onMoveToFront={onMoveToFront}
+                            onMoveForward={onMoveForward} onMoveBackward={onMoveBackward} onMoveToBack={onMoveToBack}
                             setShowMore={setShowMore}
                         />
                     )}
                 </div>
             </div>
-
-            <div className="w-3 h-3 bg-[#1e1e1e] border-b border-r border-zinc-700/50 rotate-45 -mt-1.5 z-40"></div>
         </div>,
         document.body
     );
