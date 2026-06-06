@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useSelector } from "react-redux";
+import store from "../../../store/redux/store";
 import SidebarStrip from "./SidebarStrip";
 import AssetsLibrary from "./AssetsLibrary";
 import WorkspaceArea from "./WorkspaceArea";
@@ -32,15 +33,32 @@ export const DesignPhase = ({
         try {
             const activeConfigs = Object.entries(meshConfig).filter(([_, cfg]) => cfg.maskUrl);
             const promises = activeConfigs.map(async ([meshName, cfg]) => {
+                // Get zones (drawingRect values) for this mesh from Redux store
+                const patternState = store.getState().uvMap.patternStates[meshName];
+                const zones = patternState?.zones || [];
+
                 const formData = new FormData();
                 formData.append("productId", productId);
                 formData.append("meshName", meshName);
+
+                // White mask PNG file
                 const solidDataUrl = await processWireframeToSolid(cfg.maskUrl);
                 const res = await fetch(solidDataUrl);
                 const blob = await res.blob();
                 formData.append("whiteMask", blob, `${meshName}_white.png`);
+
+                // Zones / drawingRect data as JSON string
+                formData.append("zones", JSON.stringify(zones));
+
                 await api.post("/product/mesh/save-path", formData, {
                     headers: { "Content-Type": "multipart/form-data" }
+                });
+
+                console.log(`[Save] Sent for mesh: "${meshName}"`, {
+                    productId,
+                    meshName,
+                    whiteMaskFileName: `${meshName}_white.png`,
+                    zones,
                 });
             });
             await Promise.all(promises);

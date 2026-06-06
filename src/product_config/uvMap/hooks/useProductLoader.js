@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { getProductDetails } from "../../../api/productConfigApi";
+import { store as reduxStore } from "../../../store/redux/store";
+import { startLoading, stopLoading, updateProgress, updateMessage } from "../../../store/redux/loaderSlice";
 
 export const useProductLoader = (productId) => {
   const [productData, setProductData] = useState(null);
@@ -10,10 +12,25 @@ export const useProductLoader = (productId) => {
   useEffect(() => {
     if (!productId) return;
     const loadProduct = async () => {
+      reduxStore.dispatch(startLoading({
+          title: "Fetching Product Data",
+          message: "Retrieving configuration and variants from database...",
+          type: "process",
+          progress: 20
+      }));
       try {
         const res = await getProductDetails(productId);
-        if (!res.data?.success) return;
+        reduxStore.dispatch(updateProgress(60));
+
+        if (!res.data?.success) {
+            reduxStore.dispatch(stopLoading());
+            return;
+        }
+
         const product = res.data.product;
+        reduxStore.dispatch(updateMessage("Processing and loading 3D model..."));
+        reduxStore.dispatch(updateProgress(80));
+
         setProductData(product);
 
         if (product.base_model_url) setGlbUrl(product.base_model_url);
@@ -27,8 +44,12 @@ export const useProductLoader = (productId) => {
         }
         
         if (product.variants?.length > 0) setSelectedVariantId(product.variants[0].id);
+
+        reduxStore.dispatch(updateProgress(100));
+        setTimeout(() => reduxStore.dispatch(stopLoading()), 300);
       } catch (err) {
         console.error("Failed to load product for UvMap:", err);
+        reduxStore.dispatch(stopLoading());
       }
     };
     loadProduct();

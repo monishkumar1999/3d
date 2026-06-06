@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import SetupPhase from "./SetupPhase/SetupPhase";
 import DesignPhase from "./DesignPhase/DesignPhase";
@@ -18,6 +18,15 @@ export default function UvMap() {
     const { productData, glbUrl, setGlbUrl, meshConfig, setMeshConfig, selectedVariantId, setSelectedVariantId } = useProductLoader(productId);
     const { variantTextures, loadingTextures } = useVariantTextures(productData, selectedVariantId);
     const { handleGlb, handleMaskUpload, applyTexture } = useUvHandlers(glbUrl, setGlbUrl, setMeshList, setMeshConfig, setMeshTextures);
+
+    // Auto-jump to design phase if the product already has saved meshes
+    useEffect(() => {
+        if (!productId) return;
+        const hasSavedMeshes = Object.values(meshConfig).some(cfg => cfg.maskUrl);
+        if (hasSavedMeshes) {
+            setPhase("design");
+        }
+    }, [meshConfig, productId]);
 
     return (
         <div className="w-full h-screen bg-[#f8f9fc] text-zinc-900 font-sans overflow-hidden relative">

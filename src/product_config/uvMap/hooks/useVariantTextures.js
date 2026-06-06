@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import * as THREE from "three";
+import { store as reduxStore } from "../../../store/redux/store";
+import { startLoading, stopLoading, updateProgress, updateMessage } from "../../../store/redux/loaderSlice";
 
 export const useVariantTextures = (productData, selectedVariantId) => {
   const [variantTextures, setVariantTextures] = useState({});
@@ -15,6 +17,13 @@ export const useVariantTextures = (productData, selectedVariantId) => {
 
     setLoadingTextures(true);
     const loadVariantTextures = async () => {
+      reduxStore.dispatch(startLoading({
+          title: "Loading Product Textures",
+          message: `Loading texture maps...`,
+          type: "texture",
+          progress: 10
+      }));
+
       const textures = {};
       const loadTex = (url, isColorSpace = false) => {
         if (!url) return Promise.resolve(null);
@@ -33,6 +42,9 @@ export const useVariantTextures = (productData, selectedVariantId) => {
         });
       };
 
+      let loadedCount = 0;
+      const totalTextures = variant.textures.length;
+
       for (const tex of variant.textures) {
         if (!tex.meshName) continue;
         const [map, normalMap, roughnessMap, metalnessMap, aoMap] = await Promise.all([
@@ -47,9 +59,18 @@ export const useVariantTextures = (productData, selectedVariantId) => {
             normalIntensity: tex.normalIntensity !== undefined ? tex.normalIntensity : 1
           };
         }
+        
+        loadedCount++;
+        const percent = 10 + Math.round((loadedCount / totalTextures) * 80);
+        reduxStore.dispatch(updateProgress(percent));
+        reduxStore.dispatch(updateMessage(`Loaded ${loadedCount} of ${totalTextures} texture groups...`));
       }
+
       setVariantTextures(textures);
       setLoadingTextures(false);
+      
+      reduxStore.dispatch(updateProgress(100));
+      setTimeout(() => reduxStore.dispatch(stopLoading()), 300);
     };
     loadVariantTextures();
   }, [productData, selectedVariantId]);

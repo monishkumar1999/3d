@@ -1,7 +1,8 @@
-import React from "react";
+import React, { Suspense } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Environment, OrbitControls } from "@react-three/drei";
 import DynamicModel from "../DynamicModel/DynamicModel";
+import Loader from "../DesignPhase/Loader";
 
 export const ReferencePreview = ({ glbUrl, baseTextures, globalMaterial, setMeshList }) => {
     if (!glbUrl) return null;
@@ -11,13 +12,15 @@ export const ReferencePreview = ({ glbUrl, baseTextures, globalMaterial, setMesh
             <Canvas camera={{ position: [0, 0, 3], fov: 50 }}>
                 <ambientLight intensity={0.7} />
                 <Environment preset="studio" />
-                <DynamicModel
-                    url={glbUrl}
-                    meshTextures={{}}
-                    baseTextures={baseTextures}
-                    materialProps={globalMaterial}
-                    setMeshList={setMeshList}
-                />
+                <Suspense fallback={<Loader />}>
+                    <DynamicModel
+                        url={glbUrl}
+                        meshTextures={{}}
+                        baseTextures={baseTextures}
+                        materialProps={globalMaterial}
+                        setMeshList={setMeshList}
+                    />
+                </Suspense>
                 <OrbitControls autoRotate autoRotateSpeed={2} enableZoom={false} />
             </Canvas>
             <div className="absolute top-3 left-3">

@@ -3,6 +3,7 @@ import { Html, useProgress } from "@react-three/drei";
 
 export const Loader = () => {
     const { progress } = useProgress();
+    console.log(" checking " + progress);
     return (
         <Html center>
             <div className="flex flex-col items-center gap-2">

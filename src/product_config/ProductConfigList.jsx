@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-    Search, 
-    Box, 
-    Settings2, 
-    ArrowRight, 
-    Clock, 
+import {
+    Search,
+    Box,
+    Settings2,
+    ArrowRight,
+    Clock,
     ChevronRight,
     Package,
     Plus
@@ -47,7 +47,7 @@ const ProductConfigList = () => {
                     <h1 className="text-3xl font-black text-zinc-900 tracking-tight">3D Configurator</h1>
                     <p className="text-zinc-500 font-medium">Select a product to manage its 3D PBR configurations</p>
                 </div>
-                
+
                 <div className="flex items-center gap-4">
                     <div className="relative group">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 group-focus-within:text-indigo-500 transition-colors" size={20} />
@@ -59,7 +59,7 @@ const ProductConfigList = () => {
                             className="pl-12 pr-6 py-3.5 bg-zinc-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500/20 w-full md:w-80 font-medium text-zinc-900 transition-all outline-none placeholder:text-zinc-400"
                         />
                     </div>
-                    <button 
+                    <button
                         onClick={() => navigate('/product-config')}
                         className="flex items-center gap-2 px-6 py-3.5 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all"
                     >
@@ -87,7 +87,7 @@ const ProductConfigList = () => {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredProducts.map((product) => (
-                        <div 
+                        <div
                             key={product.id}
                             className="group relative bg-white rounded-3xl border border-zinc-100 p-6 hover:shadow-xl hover:shadow-zinc-200/50 hover:border-indigo-100 transition-all duration-300 cursor-pointer"
                             onClick={() => navigate(`/product-config/${product.id}`)}
@@ -118,6 +118,11 @@ const ProductConfigList = () => {
                                     <div className="w-10 h-10 bg-zinc-50 rounded-xl flex items-center justify-center text-zinc-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-all">
                                         <ChevronRight size={20} />
                                     </div>
+                                </div>
+
+                                <div className="pt-4 flex items-center justify-between border-t border-zinc-50 mt-auto">
+                                    <span className="text-xs font-black text-zinc-400 uppercase tracking-widest">Edit</span>
+
                                 </div>
                             </div>
                         </div>

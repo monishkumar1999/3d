@@ -330,16 +330,14 @@ const ProductDetail = ({ product, onBack }) => {
                                             {/* Mesh row */}
                                             <div
                                                 onClick={() => setSelectedMesh(isSelected ? null : mesh.name)}
-                                                className={`px-5 py-3.5 cursor-pointer transition-all duration-200 group ${
-                                                    isSelected
+                                                className={`px-5 py-3.5 cursor-pointer transition-all duration-200 group ${isSelected
                                                         ? 'bg-violet-50 border-l-[3px] border-l-violet-500'
                                                         : 'hover:bg-zinc-50 border-l-[3px] border-l-transparent'
-                                                }`}
+                                                    }`}
                                             >
                                                 <div className="flex items-center gap-3">
-                                                    <span className={`inline-flex items-center justify-center w-7 h-7 rounded-lg text-xs font-black flex-shrink-0 ${
-                                                        isSelected ? 'bg-violet-200 text-violet-700' : 'bg-zinc-100 text-zinc-500'
-                                                    }`}>{i + 1}</span>
+                                                    <span className={`inline-flex items-center justify-center w-7 h-7 rounded-lg text-xs font-black flex-shrink-0 ${isSelected ? 'bg-violet-200 text-violet-700' : 'bg-zinc-100 text-zinc-500'
+                                                        }`}>{i + 1}</span>
 
                                                     <div className="flex-1 min-w-0">
                                                         <p className={`text-sm font-bold truncate ${isSelected ? 'text-violet-700' : 'text-zinc-800'}`}>

@@ -16,7 +16,7 @@ export const WorkspaceArea = ({
                 <div className="bg-white/90 backdrop-blur-md px-4 py-2 rounded-full shadow-sm border border-white/50 pointer-events-auto inline-flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
                     <h1 className="font-bold text-zinc-800 text-xs">
-                        Editor Live <span className="text-zinc-300 mx-2">|</span> 
+                        Editor Live <span className="text-zinc-300 mx-2">|</span>
                         <span className="text-indigo-600">{productName || "Untitled Project"}</span>
                     </h1>
                 </div>
