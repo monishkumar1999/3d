@@ -90,6 +90,7 @@ export const DesignPhase = ({
                 glbUrl={glbUrl} meshTextures={meshTextures} baseTextures={baseTextures} pbrTextures={pbrTextures}
                 meshMaterials={meshMaterials} globalMaterial={globalMaterial} brightness={brightness}
                 envPreset={envPreset} handleSaveClick={handleSaveClick} isSaving={isSaving}
+                selectedMesh={selectedMesh}
             />
         </div>
     );

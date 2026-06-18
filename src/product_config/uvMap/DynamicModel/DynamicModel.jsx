@@ -6,7 +6,7 @@ import { useApplyBaseMaterial } from "./useApplyBaseMaterial";
 import { useApplyStickerOverlay } from "./useApplyStickerOverlay";
 
 const DynamicModel = React.memo(({
-    url, meshTextures, baseTextures, pbrTextures, meshMaterials = {}, materialProps, showOriginal = false, setMeshList, onMeshLoaded
+    url, meshTextures, baseTextures, pbrTextures, meshMaterials = {}, materialProps, showOriginal = false, setMeshList, onMeshLoaded, selectedMesh
 }) => {
     // 1. Get model and clone it once
     const { scene } = useGLTF_custom(url);
@@ -27,7 +27,7 @@ const DynamicModel = React.memo(({
     // 3. Hooks
     useMeshDiscovery(clonedScene, setMeshList, onMeshLoaded);
     useApplyBaseMaterial({
-        clonedScene, baseTextures, pbrTextures, meshMaterials, materialProps, globalMaterial, showOriginal
+        clonedScene, baseTextures, pbrTextures, meshMaterials, materialProps, globalMaterial, showOriginal, selectedMesh
     });
     useApplyStickerOverlay({
         clonedScene, meshTextures, meshMaterials, globalMaterial, showOriginal

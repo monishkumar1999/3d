@@ -8,7 +8,7 @@ import Loader from "./Loader";
 export const ThreeDCanvas = ({
     glbUrl, meshTextures, baseTextures, pbrTextures,
     meshMaterials, globalMaterial, brightness, envPreset,
-    handleSaveClick, isSaving
+    handleSaveClick, isSaving, selectedMesh
 }) => {
     const materialProps = useMemo(() => ({
         ...globalMaterial,
@@ -57,6 +57,7 @@ export const ThreeDCanvas = ({
                                     meshMaterials={meshMaterials}
                                     materialProps={materialProps}
                                     setMeshList={() => {}}
+                                    selectedMesh={selectedMesh}
                                 />
                             </Center>
                             <ContactShadows

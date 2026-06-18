@@ -2,7 +2,7 @@ import { useEffect, useMemo } from "react";
 import * as THREE from "three";
 
 export const useApplyBaseMaterial = ({
-    clonedScene, baseTextures, pbrTextures, meshMaterials = {}, materialProps, globalMaterial, showOriginal
+    clonedScene, baseTextures, pbrTextures, meshMaterials = {}, materialProps, globalMaterial, showOriginal, selectedMesh
 }) => {
     const textureLoader = useMemo(() => new THREE.TextureLoader(), []);
 
@@ -118,5 +118,25 @@ export const useApplyBaseMaterial = ({
             }
             mat.needsUpdate = true;
         });
-    }, [clonedScene, baseTextures, pbrTextures, meshMaterials, materialProps, globalMaterial, showOriginal, textureLoader]);
+    }, [clonedScene, baseTextures, pbrTextures, meshMaterials, materialProps, globalMaterial, showOriginal, textureLoader, selectedMesh]);
+
+    // Highlight selected mesh with emissive glow
+    useEffect(() => {
+        if (!clonedScene) return;
+        clonedScene.traverse((child) => {
+            if (!child.isMesh) return;
+            if (child.userData['__stickerOverlay__']) return;
+            const mat = child.material;
+            if (!mat) return;
+
+            if (child.name === selectedMesh) {
+                mat.emissive = new THREE.Color(0x4f46e5); // indigo highlight
+                mat.emissiveIntensity = 0.35;
+            } else {
+                mat.emissive = new THREE.Color(0x000000);
+                mat.emissiveIntensity = 0;
+            }
+            mat.needsUpdate = true;
+        });
+    }, [clonedScene, selectedMesh]);
 };
