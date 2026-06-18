@@ -6,7 +6,7 @@ export const usePatternMasks = (maskUrl) => {
 
     useEffect(() => {
         if (!maskUrl) return;
-        
+
         import('../utils/maskProcessor').then(({ processWireframeToSolid }) => {
             processWireframeToSolid(maskUrl)
                 .then(solidDataUrl => {
