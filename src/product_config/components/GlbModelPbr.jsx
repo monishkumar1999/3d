@@ -30,7 +30,7 @@ function cloneMaterialTextures(material) {
 function cloneMaterial(material) {
     if (Array.isArray(material)) return material.map(cloneMaterial);
 
-    if (!material?.isMaterial) return new THREE.MeshStandardMaterial();
+    if (!material?.isMaterial) return new THREE.MeshPhysicalMaterial();
 
     const next = material.clone();
     cloneMaterialTextures(next);
@@ -41,10 +41,10 @@ function toMaterialArray(material) {
     return Array.isArray(material) ? material : [material];
 }
 
-function ensureStandardMaterial(material) {
-    if (material instanceof THREE.MeshStandardMaterial) return material;
+function ensurePhysicalMaterial(material) {
+    if (material instanceof THREE.MeshPhysicalMaterial) return material;
 
-    const next = new THREE.MeshStandardMaterial();
+    const next = new THREE.MeshPhysicalMaterial();
 
     if (material?.color) next.color.copy(material.color);
     if (material?.map) next.map = material.map;
@@ -70,8 +70,8 @@ function ensureStandardMaterial(material) {
 function initializeMeshMaterial(mesh) {
     const uniqueMaterial = cloneMaterial(mesh.material);
     const normalizedMaterial = Array.isArray(uniqueMaterial)
-        ? uniqueMaterial.map(ensureStandardMaterial)
-        : ensureStandardMaterial(uniqueMaterial);
+        ? uniqueMaterial.map(ensurePhysicalMaterial)
+        : ensurePhysicalMaterial(uniqueMaterial);
 
     mesh.material = normalizedMaterial;
     mesh.userData.baseMaterial = cloneMaterial(normalizedMaterial);
@@ -175,6 +175,28 @@ function applyMapsToMaterial(mesh, material, baseMaterial, pbrSet, isSelected) {
 
     if (baseMaterial?.emissive) material.emissive.copy(baseMaterial.emissive);
     material.emissiveIntensity = baseMaterial?.emissiveIntensity ?? 0;
+
+    // Apply transmission & opacity settings
+    const transmission = settings?.transmission ?? 0;
+    const opacity = settings?.opacity ?? 1;
+
+    material.transmission = transmission;
+    material.opacity = opacity;
+
+    if (transmission > 0 || opacity < 1) {
+        material.transparent = true;
+        if (transmission > 0) {
+            material.thickness = baseMaterial?.thickness !== undefined && baseMaterial.thickness !== 0 ? baseMaterial.thickness : 1.2;
+            material.ior = baseMaterial?.ior !== undefined ? baseMaterial.ior : 1.5;
+            // Render transmissive meshes AFTER opaque meshes to ensure inner parts are visible
+            mesh.renderOrder = 10;
+        } else {
+            mesh.renderOrder = 5;
+        }
+    } else {
+        material.transparent = baseMaterial?.transparent ?? false;
+        mesh.renderOrder = 0;
+    }
 
     if (isSelected) {
         material.emissive.copy(HIGHLIGHT_COLOR);

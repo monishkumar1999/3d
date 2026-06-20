@@ -39,6 +39,42 @@ const SettingsSection = memo(({ selectedSettings, onSettingChange }) => {
                     className="h-1.5 w-full appearance-none rounded-full bg-zinc-200 accent-indigo-500"
                 />
             </div>
+
+            <div>
+                <div className="mb-1.5 flex items-center justify-between gap-3">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">Transmission (Glass)</span>
+                    <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-zinc-700">
+                        {Math.round((selectedSettings.transmission ?? 0) * 100)}%
+                    </span>
+                </div>
+                <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={selectedSettings.transmission ?? 0}
+                    onChange={(e) => onSettingChange({ transmission: parseFloat(e.target.value) })}
+                    className="h-1.5 w-full appearance-none rounded-full bg-zinc-200 accent-indigo-500"
+                />
+            </div>
+
+            <div>
+                <div className="mb-1.5 flex items-center justify-between gap-3">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">Opacity</span>
+                    <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-zinc-700">
+                        {Math.round((selectedSettings.opacity ?? 1) * 100)}%
+                    </span>
+                </div>
+                <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={selectedSettings.opacity ?? 1}
+                    onChange={(e) => onSettingChange({ opacity: parseFloat(e.target.value) })}
+                    className="h-1.5 w-full appearance-none rounded-full bg-zinc-200 accent-indigo-500"
+                />
+            </div>
         </div>
     );
 });

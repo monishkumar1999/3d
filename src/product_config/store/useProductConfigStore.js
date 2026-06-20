@@ -26,6 +26,8 @@ export const PBR_SLOTS = [
 export const DEFAULT_PBR_SETTINGS = {
     textureRepeat: 1,
     normalIntensity: 1,
+    transmission: 0,
+    opacity: 1,
 };
 
 let pbrSetCounter = 0;
@@ -343,6 +345,8 @@ export const useProductConfigStore = create((set, get) => ({
                         pbrSet.settings = {
                             textureRepeat: parseFloat(texture.textureRepeat) || 1,
                             normalIntensity: parseFloat(texture.normalIntensity) || 1,
+                            transmission: parseFloat(texture.transmission) || 0,
+                            opacity: texture.opacity !== undefined && texture.opacity !== null ? parseFloat(texture.opacity) : 1,
                         };
                     }
                 }
@@ -783,6 +787,8 @@ export const useProductConfigStore = create((set, get) => ({
                     fd.append(`${prefix}[name]`, pbrSet.name ?? `Set ${setIdx + 1}`);
                     fd.append(`${prefix}[textureRepeat]`, pbrSet.settings?.textureRepeat ?? 1);
                     fd.append(`${prefix}[normalIntensity]`, pbrSet.settings?.normalIntensity ?? 1);
+                    fd.append(`${prefix}[transmission]`, pbrSet.settings?.transmission ?? 0);
+                    fd.append(`${prefix}[opacity]`, pbrSet.settings?.opacity ?? 1);
 
                     PBR_SLOTS.forEach((slot) => {
                         const tex = pbrSet.maps?.[slot.key];
