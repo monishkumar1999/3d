@@ -22,6 +22,22 @@ export const DesignPhase = ({
     const [pbrTextures, setPbrTextures] = useState({ normal: null, roughness: null, metalness: null, ao: null });
     const [isSaving, setIsSaving] = useState(false);
 
+    // Sync meshMaterials with baseTextures on load
+    React.useEffect(() => {
+        if (baseTextures && Object.keys(baseTextures).length > 0) {
+            const initialMaterials = {};
+            Object.entries(baseTextures).forEach(([meshName, tex]) => {
+                initialMaterials[meshName] = {
+                    transmission: tex.transmission !== undefined ? Number(tex.transmission) : 0,
+                    opacity: tex.opacity !== undefined ? Number(tex.opacity) : 1,
+                    roughness: tex.roughness !== undefined ? Number(tex.roughness) : (globalMaterial?.roughness ?? 0.5),
+                    metalness: tex.metalness !== undefined ? Number(tex.metalness) : (globalMaterial?.metalness ?? 0),
+                };
+            });
+            setMeshMaterials(initialMaterials);
+        }
+    }, [baseTextures, globalMaterial]);
+
     const productName = useSelector(state => state.uvMap.productName);
 
     const handleSaveClick = async () => {

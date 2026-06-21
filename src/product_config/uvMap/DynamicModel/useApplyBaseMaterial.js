@@ -34,13 +34,43 @@ export const useApplyBaseMaterial = ({
             const mat = child.material;
             mat.side = THREE.DoubleSide;
             const meshMat = meshMaterials[child.name] || {};
+
+            // Determine transmission and opacity from local designer UI overrides or saved database baseTextures
+            let transmission = 0;
+            if (meshMat.transmission !== undefined) {
+                transmission = Number(meshMat.transmission);
+            } else if (baseTextures && baseTextures[child.name] && baseTextures[child.name].transmission !== undefined) {
+                transmission = Number(baseTextures[child.name].transmission);
+            }
+
+            let opacity = 1;
+            if (meshMat.opacity !== undefined) {
+                opacity = Number(meshMat.opacity);
+            } else if (baseTextures && baseTextures[child.name] && baseTextures[child.name].opacity !== undefined) {
+                opacity = Number(baseTextures[child.name].opacity);
+            } else {
+                opacity = child.userData.originalMat.opacity !== undefined ? child.userData.originalMat.opacity : 1;
+            }
+
             mat.roughness = meshMat.roughness !== undefined ? meshMat.roughness : (globalMaterial?.roughness ?? 0.5);
             mat.metalness = meshMat.metalness !== undefined ? meshMat.metalness : (globalMaterial?.metalness ?? 0);
-            mat.transmission = meshMat.transmission !== undefined ? meshMat.transmission : 0;
+            
+            mat.transmission = transmission;
+            mat.opacity = opacity;
             mat.ior = 1.5;
             mat.thickness = 0.5;
             
-            if (mat.transmission > 0) mat.transparent = true;
+            if (transmission > 0 || opacity < 1) {
+                mat.transparent = true;
+                if (transmission > 0) {
+                    child.renderOrder = 10; // Render transmissive meshes AFTER others
+                } else {
+                    child.renderOrder = 5;
+                }
+            } else {
+                mat.transparent = child.userData.originalMat.transparent ?? false;
+                child.renderOrder = 0;
+            }
             if (materialProps?.color) mat.color.set(materialProps.color);
 
             // Apply base textures from variants

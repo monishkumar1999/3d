@@ -62,6 +62,12 @@ export const AssetsLibrary = ({
                                 <span>{meshMaterials[selectedMesh]?.transmission ?? 0}</span>
                             </div>
                             <input type="range" min="0" max="1" step="0.01" value={meshMaterials[selectedMesh]?.transmission ?? 0} onChange={(e) => setMeshMaterials(prev => ({ ...prev, [selectedMesh]: { ...prev[selectedMesh], transmission: Number(e.target.value) } }))} className="w-full h-1 bg-indigo-200 rounded-lg appearance-none accent-indigo-600" />
+
+                            <div className="flex justify-between text-[10px] font-bold text-indigo-800 uppercase mb-1 mt-3">
+                                <span>Opacity</span>
+                                <span>{meshMaterials[selectedMesh]?.opacity ?? 1}</span>
+                            </div>
+                            <input type="range" min="0" max="1" step="0.01" value={meshMaterials[selectedMesh]?.opacity ?? 1} onChange={(e) => setMeshMaterials(prev => ({ ...prev, [selectedMesh]: { ...prev[selectedMesh], opacity: Number(e.target.value) } }))} className="w-full h-1 bg-indigo-200 rounded-lg appearance-none accent-indigo-600" />
                         </div>
                     </div>
                 )}

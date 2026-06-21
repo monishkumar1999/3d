@@ -37,7 +37,7 @@ export const useUvHandlers = (glbUrl, setGlbUrl, setMeshList, setMeshConfig, set
     }
 
     if (dataOrCanvas instanceof HTMLCanvasElement || (typeof ImageBitmap !== 'undefined' && dataOrCanvas instanceof ImageBitmap)) {
-      const tex = new THREE.Texture(dataOrCanvas);
+      const tex = new THREE.CanvasTexture(dataOrCanvas);
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.flipY = false;
       tex.generateMipmaps = true;

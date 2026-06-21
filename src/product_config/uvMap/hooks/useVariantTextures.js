@@ -52,13 +52,14 @@ export const useVariantTextures = (productData, selectedVariantId) => {
           loadTex(tex.roughnessMap, false), loadTex(tex.metalnessMap, false), loadTex(tex.aoMap, false)
         ]);
 
-        if (map || normalMap || roughnessMap || metalnessMap || aoMap) {
-          textures[tex.meshName] = {
-            map, normalMap, roughnessMap, metalnessMap, aoMap,
-            textureRepeat: tex.textureRepeat !== undefined ? tex.textureRepeat : 1,
-            normalIntensity: tex.normalIntensity !== undefined ? tex.normalIntensity : 1
-          };
-        }
+        // Always register the mesh configuration so transmission and opacity settings are loaded
+        textures[tex.meshName] = {
+          map, normalMap, roughnessMap, metalnessMap, aoMap,
+          textureRepeat: tex.textureRepeat !== undefined ? Number(tex.textureRepeat) : 1,
+          normalIntensity: tex.normalIntensity !== undefined ? Number(tex.normalIntensity) : 1,
+          transmission: tex.transmission !== undefined ? Number(tex.transmission) : 0,
+          opacity: tex.opacity !== undefined ? Number(tex.opacity) : 1
+        };
         
         loadedCount++;
         const percent = 10 + Math.round((loadedCount / totalTextures) * 80);

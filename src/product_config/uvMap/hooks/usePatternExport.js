@@ -30,6 +30,7 @@ export const usePatternExport = ({
         if (trRef.current) trRef.current.nodes([]);
 
         const hasContent = stickersRef.current.length > 0 || textNodesRef.current.length > 0;
+        console.log("[usePatternExport] performExport for mesh:", meshName, "hasContent:", hasContent, "stickers:", stickersRef.current.length, "texts:", textNodesRef.current.length);
 
         if (!hasContent) {
             onUpdateTexture(meshName, null);
@@ -73,6 +74,7 @@ export const usePatternExport = ({
                 // Translate to sticker center, rotate, then draw centered
                 const cx = (s.x + s.width / 2) * scale;
                 const cy = (s.y + s.height / 2) * scale;
+                console.log("[usePatternExport] Drawing sticker image on canvas. Original size:", s.width, "x", s.height, "Original pos:", s.x, s.y, "Scaled pos:", cx, cy);
                 ctx.translate(cx, cy);
                 if (s.rotation) ctx.rotate((s.rotation * Math.PI) / 180);
                 ctx.globalAlpha = s.opacity ?? 1;
@@ -102,6 +104,7 @@ export const usePatternExport = ({
                 ctx.restore();
             }
 
+            console.log("[usePatternExport] Calling onUpdateTexture with offscreen canvas", offscreen.width, "x", offscreen.height);
             onUpdateTexture(meshName, offscreen);
         }
 
