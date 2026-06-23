@@ -56,7 +56,7 @@ export const ThreeDCanvas = ({
                                     pbrTextures={pbrTextures}
                                     meshMaterials={meshMaterials}
                                     materialProps={materialProps}
-                                    setMeshList={() => {}}
+                                    setMeshList={() => { }}
                                     selectedMesh={selectedMesh}
                                 />
                             </Center>

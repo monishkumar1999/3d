@@ -331,8 +331,8 @@ const ProductDetail = ({ product, onBack }) => {
                                             <div
                                                 onClick={() => setSelectedMesh(isSelected ? null : mesh.name)}
                                                 className={`px-5 py-3.5 cursor-pointer transition-all duration-200 group ${isSelected
-                                                        ? 'bg-violet-50 border-l-[3px] border-l-violet-500'
-                                                        : 'hover:bg-zinc-50 border-l-[3px] border-l-transparent'
+                                                    ? 'bg-violet-50 border-l-[3px] border-l-violet-500'
+                                                    : 'hover:bg-zinc-50 border-l-[3px] border-l-transparent'
                                                     }`}
                                             >
                                                 <div className="flex items-center gap-3">

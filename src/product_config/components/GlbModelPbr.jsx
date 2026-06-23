@@ -52,11 +52,11 @@ function ensurePhysicalMaterial(material) {
     if (material?.roughnessMap) next.roughnessMap = material.roughnessMap;
     if (material?.metalnessMap) next.metalnessMap = material.metalnessMap;
     if (material?.aoMap) next.aoMap = material.aoMap;
-    
+
     if (typeof material?.roughness === "number") next.roughness = material.roughness;
     if (typeof material?.metalness === "number") next.metalness = material.metalness;
     if (typeof material?.aoMapIntensity === "number") next.aoMapIntensity = material.aoMapIntensity;
-    
+
     if (material?.emissive) next.emissive.copy(material.emissive);
     if (typeof material?.emissiveIntensity === "number") next.emissiveIntensity = material.emissiveIntensity;
     if (material?.normalScale) next.normalScale.copy(material.normalScale);
@@ -106,32 +106,32 @@ function applyMapsToMaterial(mesh, material, baseMaterial, pbrSet, isSelected) {
     material.roughnessMap = baseMaterial?.roughnessMap ?? null;
     material.metalnessMap = baseMaterial?.metalnessMap ?? null;
     material.aoMap = baseMaterial?.aoMap ?? null;
-    
+
     // Reset to base or defaults before applying slots
     material.roughness = baseMaterial?.roughness ?? 1;
     material.metalness = baseMaterial?.metalness ?? 0;
     material.aoMapIntensity = baseMaterial?.aoMapIntensity ?? 1;
-    
+
     material.side = baseMaterial?.side ?? THREE.FrontSide;
     material.normalScale.copy(baseMaterial?.normalScale ?? DEFAULT_NORMAL_SCALE);
 
     if (slots) {
         if ("map" in slots) material.map = slots.map ?? null;
-        
+
         if ("normalMap" in slots) {
             material.normalMap = slots.normalMap ?? null;
         }
-        
+
         if ("roughnessMap" in slots) {
             material.roughnessMap = slots.roughnessMap ?? null;
             if (material.roughnessMap) material.roughness = 1.0;
         }
-        
+
         if ("metalnessMap" in slots) {
             material.metalnessMap = slots.metalnessMap ?? null;
             if (material.metalnessMap) material.metalness = 1.0;
         }
-        
+
         if ("aoMap" in slots) {
             material.aoMap = slots.aoMap ?? null;
             if (material.aoMap) material.aoMapIntensity = 1.0;
@@ -153,7 +153,7 @@ function applyMapsToMaterial(mesh, material, baseMaterial, pbrSet, isSelected) {
         const baseScale = (baseMaterial?.normalScale && (baseMaterial.normalScale.x !== 0 || baseMaterial.normalScale.y !== 0))
             ? baseMaterial.normalScale
             : DEFAULT_NORMAL_SCALE;
-            
+
         material.normalScale.copy(baseScale).multiplyScalar(normalIntensity);
     } else {
         material.normalScale.set(0, 0);
@@ -255,7 +255,7 @@ const GlbModelPbr = memo(({ url }) => {
             if (pbrSet?.maps && Object.keys(pbrSet.maps).length > 0) {
                 console.log(`[GlbModelPbr] Mesh: ${child.name} has maps:`, Object.keys(pbrSet.maps));
             }
-            
+
             const materials = toMaterialArray(child.material);
             const baseMaterials = toMaterialArray(child.userData.baseMaterial);
 

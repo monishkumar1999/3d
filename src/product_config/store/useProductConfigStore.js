@@ -201,7 +201,7 @@ export const useProductConfigStore = create((set, get) => ({
 
             if (res.data?.success) {
                 const product = res.data.product;
-                
+
                 reduxStore.dispatch(updateMessage("Processing and loading 3D model..."));
                 reduxStore.dispatch(updateProgress(80));
 
@@ -648,12 +648,12 @@ export const useProductConfigStore = create((set, get) => ({
                 const meshState = normalizePbrSetState(nextPbrSets[m.id]);
                 // target the same index for this mesh
                 const setIndex = selectedIndex < meshState.sets.length ? selectedIndex : meshState.sets.length - 1;
-                
+
                 if (setIndex >= 0) {
                     const nextSets = [...meshState.sets];
                     const currentSet = { ...nextSets[setIndex] };
                     const nextMaps = { ...currentSet.maps };
-                    
+
                     if (files.length === 0) {
                         // Clear slot
                         if (nextMaps[slot.key]?.dispose) nextMaps[slot.key].dispose();
@@ -666,7 +666,7 @@ export const useProductConfigStore = create((set, get) => ({
                         clonedTexture.needsUpdate = true;
                         nextMaps[slot.key] = clonedTexture;
                     }
-                    
+
                     // Auto-rename set if it's still using a default name
                     let nextSetName = currentSet.name;
                     if (files.length > 0 && !pbrSetHasMaps(currentSet) && isDefaultPbrSetName(currentSet.name)) {

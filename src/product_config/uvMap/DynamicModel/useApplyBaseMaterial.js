@@ -54,12 +54,12 @@ export const useApplyBaseMaterial = ({
 
             mat.roughness = meshMat.roughness !== undefined ? meshMat.roughness : (globalMaterial?.roughness ?? 0.5);
             mat.metalness = meshMat.metalness !== undefined ? meshMat.metalness : (globalMaterial?.metalness ?? 0);
-            
+
             mat.transmission = transmission;
             mat.opacity = opacity;
             mat.ior = 1.5;
             mat.thickness = 0.5;
-            
+
             if (transmission > 0 || opacity < 1) {
                 mat.transparent = true;
                 if (transmission > 0) {
@@ -106,7 +106,7 @@ export const useApplyBaseMaterial = ({
                 if (mat.normalMap) {
                     mat.normalScale = new THREE.Vector2(nInt, nInt);
                     if (child.geometry && child.geometry.attributes.uv && !child.geometry.attributes.tangent) {
-                        try { child.geometry.computeTangents(); } catch (e) {}
+                        try { child.geometry.computeTangents(); } catch (e) { }
                     }
                 } else {
                     mat.normalScale = new THREE.Vector2(0, 0);

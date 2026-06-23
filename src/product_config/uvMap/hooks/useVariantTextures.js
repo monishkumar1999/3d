@@ -18,10 +18,10 @@ export const useVariantTextures = (productData, selectedVariantId) => {
     setLoadingTextures(true);
     const loadVariantTextures = async () => {
       reduxStore.dispatch(startLoading({
-          title: "Loading Product Textures",
-          message: `Loading texture maps...`,
-          type: "texture",
-          progress: 10
+        title: "Loading Product Textures",
+        message: `Loading texture maps...`,
+        type: "texture",
+        progress: 10
       }));
 
       const textures = {};
@@ -60,7 +60,7 @@ export const useVariantTextures = (productData, selectedVariantId) => {
           transmission: tex.transmission !== undefined ? Number(tex.transmission) : 0,
           opacity: tex.opacity !== undefined ? Number(tex.opacity) : 1
         };
-        
+
         loadedCount++;
         const percent = 10 + Math.round((loadedCount / totalTextures) * 80);
         reduxStore.dispatch(updateProgress(percent));
@@ -69,7 +69,7 @@ export const useVariantTextures = (productData, selectedVariantId) => {
 
       setVariantTextures(textures);
       setLoadingTextures(false);
-      
+
       reduxStore.dispatch(updateProgress(100));
       setTimeout(() => reduxStore.dispatch(stopLoading()), 300);
     };
