@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TestSDK - Demo</title>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+        h1 { color: #818cf8; margin-bottom: 1rem; }
+        #app {
+            padding: 2rem;
+            border: 2px solid #334155;
+            border-radius: 12px;
+            background: #1e293b;
+            min-width: 300px;
+            text-align: center;
+        }
+        code {
+            background: #334155;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <h1>TestSDK Demo</h1>
+    <p>The component will render inside the box below:</p>
+    <div id="app"></div>
+
+    <!-- Load the SDK -->
+    <script src="./sdk-dist/test-sdk.umd.cjs"></script>
+    <script>
+        // Use the SDK to render the component
+        const instance = TestSDK.render("#app");
+
+        // You can also destroy or update later:
+        // instance.destroy();
+        // instance.update({ someProp: "value" });
+    </script>
+</body>
+</html>

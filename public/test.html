@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Product Config List SDK Demo</title>
+    <style>
+        body { margin: 0; padding: 32px; background: #f4f4f5; }
+    </style>
+</head>
+<body>
+    <div id="app"></div>
+
+    <!-- Load the SDK -->
+    <script src="http://localhost:5173/product-config-list-sdk.umd.cjs"></script>
+    <script>
+        ProductConfigListSDK.render("#app", {
+            // Your backend API base URL
+            apiBaseUrl: "http://localhost:5000",
+
+            // Called when a product card is clicked
+            onProductClick: function(product) {
+                alert("Product clicked!\nName: " + product.name + "\nID: " + product.id);
+                // You can navigate, open a modal, etc.
+            },
+
+            // Called when "New Config" button is clicked
+            onNewConfig: function() {
+                alert("New Config clicked!");
+            }
+        });
+    </script>
+</body>
+</html>

@@ -11,6 +11,7 @@ import SvgConverter from "../components/SvgConverter";
 import GlbMeshInspector from "../product_config/GlbMeshInspector";
 import ProductConfigList from "../product_config/ProductConfigList";
 import MeshConfigList from "../product_config/MeshConfigList";
+import TestSDK from "../sdkComponent/TestSDK.jsx";
 
 // ----------------------------------
 
@@ -37,7 +38,7 @@ const AppRoutes = () => {
         <Route path="/product-config" element={<GlbMeshInspector />} />
         <Route path="/product-config-list" element={<ProductConfigList />} />
         <Route path="/mesh-config" element={<MeshConfigList />} />
-
+        <Route path="/test-sdk" element={<TestSDK />} />
       </Route>
 
       {/* Catch-all route for 404 */}
