@@ -90,7 +90,7 @@ export default function AROverlay({
                                 ) : (
                                     <>
                                         <Scan size={16} className="text-indigo-400 animate-spin" />
-                                        <span>Scanning room floor/table... Point phone down</span>
+                                        <span>Scanning surface... Point down or tap button below</span>
                                     </>
                                 )
                             ) : (
@@ -143,8 +143,8 @@ export default function AROverlay({
                                 </button>
                             )}
 
-                            {/* Manual Place Button if reticle is active */}
-                            {(!isPlaced || isRepositioning) && reticleVisible && (
+                            {/* Place / Show Model Button */}
+                            {(!isPlaced || isRepositioning) && (
                                 <button
                                     onClick={onPlace}
                                     className="flex items-center justify-center gap-2 px-5 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl text-xs font-extrabold shadow-xl shadow-emerald-500/30 transition-all active:scale-95"

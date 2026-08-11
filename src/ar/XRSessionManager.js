@@ -33,10 +33,10 @@ export async function requestARSession({ domOverlayElement = null } = {}) {
         throw new Error("WebXR is not available on this browser.");
     }
 
-    // Keep requiredFeatures minimal for maximum mobile device compatibility (e.g. hit-test only)
+    // Require local-floor space for stationary real-world surface anchoring
     const sessionInit = {
-        requiredFeatures: ["hit-test"],
-        optionalFeatures: ["local-floor", "dom-overlay", "light-estimation", "anchors"],
+        requiredFeatures: ["hit-test", "local-floor"],
+        optionalFeatures: ["dom-overlay", "light-estimation", "anchors"],
     };
 
     if (domOverlayElement) {
@@ -47,8 +47,16 @@ export async function requestARSession({ domOverlayElement = null } = {}) {
         const session = await navigator.xr.requestSession("immersive-ar", sessionInit);
         return session;
     } catch (err) {
-        console.error("[XRSessionManager] Failed to launch WebXR AR session:", err);
-        throw err;
+        console.warn("[XRSessionManager] local-floor required feature failed, trying local fallback...", err);
+        // Fallback for devices supporting "local" instead of "local-floor"
+        const fallbackInit = {
+            requiredFeatures: ["hit-test", "local"],
+            optionalFeatures: ["dom-overlay", "light-estimation", "anchors"],
+        };
+        if (domOverlayElement) {
+            fallbackInit.domOverlay = { root: domOverlayElement };
+        }
+        return await navigator.xr.requestSession("immersive-ar", fallbackInit);
     }
 }
 

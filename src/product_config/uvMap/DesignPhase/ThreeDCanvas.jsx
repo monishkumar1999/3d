@@ -104,6 +104,7 @@ export const ThreeDCanvas = ({
                 onClose={() => setIsAROpen(false)}
                 modelComponent={DynamicModel}
                 modelProps={modelProps}
+                glbUrl={glbUrl}
             />
         </>
     );

@@ -42,14 +42,14 @@ export const DesignPhase = ({
 
     const handleSaveClick = async () => {
         if (!productId) {
-            alert("No Product ID found! Cannot save meshes.");
+            alert("No Product ID found! Cannot save design.");
             return;
         }
         setIsSaving(true);
         try {
+            // 1. Save mesh white masks and zones to /product/mesh/save-path
             const activeConfigs = Object.entries(meshConfig).filter(([_, cfg]) => cfg.maskUrl);
             const promises = activeConfigs.map(async ([meshName, cfg]) => {
-                // Get zones (drawingRect values) for this mesh from Redux store
                 const patternState = store.getState().uvMap.patternStates[meshName];
                 const zones = patternState?.zones || [];
 
@@ -57,20 +57,17 @@ export const DesignPhase = ({
                 formData.append("productId", productId);
                 formData.append("meshName", meshName);
 
-                // White mask PNG file
                 const solidDataUrl = await processWireframeToSolid(cfg.maskUrl);
                 const res = await fetch(solidDataUrl);
                 const blob = await res.blob();
                 formData.append("whiteMask", blob, `${meshName}_white.png`);
-
-                // Zones / drawingRect data as JSON string
                 formData.append("zones", JSON.stringify(zones));
 
                 await api.post("/product/mesh/save-path", formData, {
                     headers: { "Content-Type": "multipart/form-data" }
                 });
 
-                console.log(`[Save] Sent for mesh: "${meshName}"`, {
+                console.log(`[Save Mesh] Sent for mesh: "${meshName}"`, {
                     productId,
                     meshName,
                     whiteMaskFileName: `${meshName}_white.png`,
@@ -78,10 +75,77 @@ export const DesignPhase = ({
                 });
             });
             await Promise.all(promises);
-            alert("Meshes Saved Successfully!");
+
+            // 2. Save full custom user design (stickers, textNodes, colors, materials) to user_designs table via /save-design
+            const patternStates = store.getState().uvMap.patternStates || {};
+            const meshStickers = {};
+            const meshTextNodes = {};
+            const meshZones = {};
+
+            Object.entries(patternStates).forEach(([mName, pState]) => {
+                if (pState.stickers && pState.stickers.length > 0) {
+                    meshStickers[mName] = pState.stickers.map(s => ({
+                        id: s.id,
+                        url: s.url || s.src || s.image?.src || "",
+                        x: s.x,
+                        y: s.y,
+                        width: s.width,
+                        height: s.height,
+                        rotation: s.rotation || 0,
+                        scaleX: s.scaleX || 1,
+                        scaleY: s.scaleY || 1,
+                        opacity: s.opacity !== undefined ? s.opacity : 1,
+                    }));
+                }
+
+                if (pState.textNodes && pState.textNodes.length > 0) {
+                    meshTextNodes[mName] = pState.textNodes.map(t => ({
+                        id: t.id,
+                        text: t.text,
+                        x: t.x,
+                        y: t.y,
+                        fontSize: t.fontSize,
+                        fontFamily: t.fontFamily,
+                        fill: t.fill,
+                        rotation: t.rotation || 0,
+                        scaleX: t.scaleX || 1,
+                        scaleY: t.scaleY || 1,
+                    }));
+                }
+
+                if (pState.zones && pState.zones.length > 0) {
+                    meshZones[mName] = pState.zones;
+                }
+            });
+
+            const designData = {
+                meshColors,
+                meshMaterials,
+                meshStickers,
+                meshTextNodes,
+                meshZones,
+                globalMaterial,
+            };
+
+            const designFormData = new FormData();
+            designFormData.append("productId", productId);
+            designFormData.append("designName", productName || "Custom Product Design");
+            designFormData.append("designData", JSON.stringify(designData));
+
+            await api.post("/product/save-design", designFormData, {
+                headers: { "Content-Type": "multipart/form-data" }
+            });
+
+            console.log("[Save Design] Saved to user_designs table:", {
+                productId,
+                designName: productName || "Custom Product Design",
+                designData
+            });
+
+            alert("Design Saved Successfully!");
         } catch (error) {
             console.error("Save failed", error);
-            alert("Failed to save meshes. Check console.");
+            alert("Failed to save design. Check console.");
         } finally {
             setIsSaving(false);
         }

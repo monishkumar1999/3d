@@ -16,26 +16,58 @@ export function usePlacementLogic({ isARActive, reticleDataRef, session = null }
     const [yRotation, setYRotation] = useState(0);
     const [isRepositioning, setIsRepositioning] = useState(false);
 
+    const anchorRef = useRef(null);
+
     /**
      * Executes tap-to-place action based on current reticle surface position.
      */
-    const placeObject = useCallback(() => {
+    const placeObject = useCallback((cameraObj = null) => {
         const currentData = reticleDataRef?.current;
-        if (!currentData || !currentData.visible || !currentData.position) {
-            return false;
-        }
+        if (currentData && currentData.visible && currentData.position) {
+            setPlacedPosition(currentData.position.clone());
+            setPlacedQuaternion(currentData.quaternion ? currentData.quaternion.clone() : new THREE.Quaternion());
 
-        setPlacedPosition(currentData.position.clone());
-        setPlacedQuaternion(currentData.quaternion ? currentData.quaternion.clone() : new THREE.Quaternion());
+            // Create WebXR hardware-accelerated spatial anchor if available
+            if (currentData.hitResult && typeof currentData.hitResult.createAnchor === "function") {
+                currentData.hitResult.createAnchor().then((anchor) => {
+                    anchorRef.current = anchor;
+                }).catch((err) => {
+                    console.warn("[PlacementLogic] WebXR createAnchor note:", err);
+                });
+            }
+        } else if (cameraObj) {
+            const worldPos = new THREE.Vector3();
+            const worldQuat = new THREE.Quaternion();
+            cameraObj.getWorldPosition(worldPos);
+            cameraObj.getWorldQuaternion(worldQuat);
+
+            const offset = new THREE.Vector3(0, -0.4, -1.5).applyQuaternion(worldQuat);
+            worldPos.add(offset);
+
+            setPlacedPosition(worldPos);
+            setPlacedQuaternion(worldQuat);
+        } else {
+            setPlacedPosition(new THREE.Vector3(0, -0.4, -1.5));
+            setPlacedQuaternion(new THREE.Quaternion());
+        }
         setIsPlaced(true);
         setIsRepositioning(false);
         return true;
     }, [reticleDataRef]);
 
+    const updateAnchoredPose = useCallback((pos, quat) => {
+        setPlacedPosition(pos);
+        if (quat) setPlacedQuaternion(quat);
+    }, []);
+
     /**
      * Resets placement state to allow placing the model at a new location.
      */
     const repositionObject = useCallback(() => {
+        if (anchorRef.current && typeof anchorRef.current.delete === "function") {
+            try { anchorRef.current.delete(); } catch (_) { }
+        }
+        anchorRef.current = null;
         setIsRepositioning(true);
     }, []);
 
@@ -50,6 +82,10 @@ export function usePlacementLogic({ isARActive, reticleDataRef, session = null }
      * Resets placement and transformation state completely.
      */
     const resetPlacement = useCallback(() => {
+        if (anchorRef.current && typeof anchorRef.current.delete === "function") {
+            try { anchorRef.current.delete(); } catch (_) { }
+        }
+        anchorRef.current = null;
         setIsPlaced(false);
         setIsRepositioning(false);
         setPlacedPosition(new THREE.Vector3(0, 0, 0));
@@ -84,6 +120,8 @@ export function usePlacementLogic({ isARActive, reticleDataRef, session = null }
         yRotation,
         setYRotation,
         isRepositioning,
+        anchorRef,
+        updateAnchoredPose,
         placeObject,
         repositionObject,
         resetScale,

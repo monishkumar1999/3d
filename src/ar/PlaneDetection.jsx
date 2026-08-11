@@ -102,6 +102,7 @@ export default function PlaneDetection({ active, onHitTestResult }) {
                         position: tempPosition.current,
                         quaternion: tempQuaternion.current,
                         rawMatrix: hitMatrix.current,
+                        hitResult: hit,
                     });
                 }
                 return;

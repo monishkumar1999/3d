@@ -34,9 +34,7 @@ const DynamicModel = React.memo(({
     });
 
     return (
-        <Center>
-            <primitive object={clonedScene} />
-        </Center>
+        <primitive object={clonedScene} />
     );
 });
 
