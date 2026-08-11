@@ -46,7 +46,7 @@ function ARModelGroup({
 
         if (placement.isPlaced && !placement.isRepositioning) {
             // Anchored state: lock strictly at physical world position and rotation
-            groupRef.current.position.copy(placement.placedPosition);
+            groupRef.current.position.copy(placement.placedPositionRef.current);
             groupRef.current.quaternion.copy(finalQuaternion);
             groupRef.current.scale.set(placement.scale, placement.scale, placement.scale);
         } else {
@@ -157,13 +157,13 @@ function ARSceneContent({
 
     // Calculate final model rotation (Base surface quaternion combined with gesture Y-axis rotation)
     const finalQuaternion = React.useMemo(() => {
-        const q = placement.placedQuaternion.clone();
+        const q = placement.placedQuaternionRef.current.clone();
         if (placement.yRotation !== 0) {
             const yRotQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), placement.yRotation);
             q.multiply(yRotQuat);
         }
         return q;
-    }, [placement.placedQuaternion, placement.yRotation]);
+    }, [placement.placedQuaternionRef, placement.yRotation]);
 
     return (
         <>

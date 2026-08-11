@@ -5,6 +5,7 @@ import SidebarStrip from "./SidebarStrip";
 import AssetsLibrary from "./AssetsLibrary";
 import WorkspaceArea from "./WorkspaceArea";
 import ThreeDCanvas from "./ThreeDCanvas";
+import SavedDesignsModal from "./SavedDesignsModal";
 import api from "../../../api/axios";
 import { processWireframeToSolid } from "../utils/maskProcessor";
 
@@ -21,6 +22,7 @@ export const DesignPhase = ({
     const [showWireframe, setShowWireframe] = useState(true);
     const [pbrTextures, setPbrTextures] = useState({ normal: null, roughness: null, metalness: null, ao: null });
     const [isSaving, setIsSaving] = useState(false);
+    const [isSavedDesignsModalOpen, setIsSavedDesignsModalOpen] = useState(false);
 
     // Sync meshMaterials with baseTextures on load
     React.useEffect(() => {
@@ -82,20 +84,48 @@ export const DesignPhase = ({
             const meshTextNodes = {};
             const meshZones = {};
 
-            Object.entries(patternStates).forEach(([mName, pState]) => {
+            const designFormData = new FormData();
+            designFormData.append("productId", productId);
+            designFormData.append("designName", productName || "Custom Product Design");
+
+            const blobToDataURL = (blob) => new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+
+            for (const [mName, pState] of Object.entries(patternStates)) {
                 if (pState.stickers && pState.stickers.length > 0) {
-                    meshStickers[mName] = pState.stickers.map(s => ({
-                        id: s.id,
-                        url: s.url || s.src || s.image?.src || "",
-                        x: s.x,
-                        y: s.y,
-                        width: s.width,
-                        height: s.height,
-                        rotation: s.rotation || 0,
-                        scaleX: s.scaleX || 1,
-                        scaleY: s.scaleY || 1,
-                        opacity: s.opacity !== undefined ? s.opacity : 1,
+                    const processedStickers = await Promise.all(pState.stickers.map(async (s) => {
+                        let stickerUrl = s.url || s.src || s.image?.src || "";
+
+                        if (stickerUrl.startsWith("blob:") || stickerUrl.startsWith("data:")) {
+                            try {
+                                const response = await fetch(stickerUrl);
+                                const blob = await response.blob();
+                                designFormData.append(`sticker_${s.id}`, blob, `sticker_${s.id}.png`);
+                                designFormData.append(s.id, blob, `${s.id}.png`);
+                                stickerUrl = await blobToDataURL(blob);
+                            } catch (e) {
+                                console.error("Failed to process blob sticker:", e);
+                            }
+                        }
+
+                        return {
+                            id: s.id,
+                            url: stickerUrl,
+                            x: s.x,
+                            y: s.y,
+                            width: s.width,
+                            height: s.height,
+                            rotation: s.rotation || 0,
+                            scaleX: s.scaleX || 1,
+                            scaleY: s.scaleY || 1,
+                            opacity: s.opacity !== undefined ? s.opacity : 1,
+                        };
                     }));
+                    meshStickers[mName] = processedStickers;
                 }
 
                 if (pState.textNodes && pState.textNodes.length > 0) {
@@ -116,7 +146,7 @@ export const DesignPhase = ({
                 if (pState.zones && pState.zones.length > 0) {
                     meshZones[mName] = pState.zones;
                 }
-            });
+            }
 
             const designData = {
                 meshColors,
@@ -127,9 +157,6 @@ export const DesignPhase = ({
                 globalMaterial,
             };
 
-            const designFormData = new FormData();
-            designFormData.append("productId", productId);
-            designFormData.append("designName", productName || "Custom Product Design");
             designFormData.append("designData", JSON.stringify(designData));
 
             await api.post("/product/save-design", designFormData, {
@@ -153,7 +180,12 @@ export const DesignPhase = ({
 
     return (
         <div className="flex w-full h-full relative bg-[#f8f9fc] overflow-hidden">
-            <SidebarStrip sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} onBack={onBack} />
+            <SidebarStrip
+                sidebarOpen={sidebarOpen}
+                setSidebarOpen={setSidebarOpen}
+                onBack={onBack}
+                onOpenSavedDesigns={() => setIsSavedDesignsModalOpen(true)}
+            />
             <AssetsLibrary
                 sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} setActiveStickerUrl={setActiveStickerUrl}
                 selectedMesh={selectedMesh} meshMaterials={meshMaterials} setMeshMaterials={setMeshMaterials}
@@ -171,6 +203,10 @@ export const DesignPhase = ({
                 meshMaterials={meshMaterials} globalMaterial={globalMaterial} brightness={brightness}
                 envPreset={envPreset} handleSaveClick={handleSaveClick} isSaving={isSaving}
                 selectedMesh={selectedMesh}
+            />
+            <SavedDesignsModal
+                isOpen={isSavedDesignsModalOpen}
+                onClose={() => setIsSavedDesignsModalOpen(false)}
             />
         </div>
     );

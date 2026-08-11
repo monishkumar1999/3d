@@ -14,7 +14,8 @@ import {
   Palette,
   Layers,
   GitMerge,
-  FileCode
+  FileCode,
+  FolderHeart
 } from "lucide-react";
 
 
@@ -26,6 +27,7 @@ const SIDEBAR_ITEMS = [
   { icon: ShoppingBag, label: "Product List", href: "/products" },
   { icon: Box, label: "Product Catalog", href: "/catalog" },
   { icon: Palette, label: "Customization Studio", href: "/studio" },
+  { icon: FolderHeart, label: "Saved Designs", href: "/saved-designs" },
   { icon: Settings, label: "UvMap", href: "/uvMap" },
    { icon: Settings, label: "Product Configuration", href: "/product-config" },
    { icon: Box, label: "3D Model List", href: "/product-config-list" },

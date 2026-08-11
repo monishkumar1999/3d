@@ -10,22 +10,39 @@ import * as THREE from "three";
 
 export function usePlacementLogic({ isARActive, reticleDataRef, session = null }) {
     const [isPlaced, setIsPlaced] = useState(false);
-    const [placedPosition, setPlacedPosition] = useState(new THREE.Vector3(0, 0, 0));
-    const [placedQuaternion, setPlacedQuaternion] = useState(new THREE.Quaternion());
     const [scale, setScale] = useState(1.0);
     const [yRotation, setYRotation] = useState(0);
     const [isRepositioning, setIsRepositioning] = useState(false);
 
+    // Ref-backed storage to lock position firmly & prevent tap displacement
+    const isPlacedRef = useRef(false);
+    const isRepositioningRef = useRef(false);
+    const placedPositionRef = useRef(new THREE.Vector3(0, 0, 0));
+    const placedQuaternionRef = useRef(new THREE.Quaternion());
     const anchorRef = useRef(null);
+
+    useEffect(() => {
+        isPlacedRef.current = isPlaced;
+    }, [isPlaced]);
+
+    useEffect(() => {
+        isRepositioningRef.current = isRepositioning;
+    }, [isRepositioning]);
 
     /**
      * Executes tap-to-place action based on current reticle surface position.
+     * Locks the model position firmly at current hit location.
      */
     const placeObject = useCallback((cameraObj = null) => {
+        // If already locked in place and not repositioning, DO NOT move!
+        if (isPlacedRef.current && !isRepositioningRef.current) {
+            return false;
+        }
+
         const currentData = reticleDataRef?.current;
         if (currentData && currentData.visible && currentData.position) {
-            setPlacedPosition(currentData.position.clone());
-            setPlacedQuaternion(currentData.quaternion ? currentData.quaternion.clone() : new THREE.Quaternion());
+            placedPositionRef.current.copy(currentData.position);
+            placedQuaternionRef.current.copy(currentData.quaternion ? currentData.quaternion : new THREE.Quaternion());
 
             // Create WebXR hardware-accelerated spatial anchor if available
             if (currentData.hitResult && typeof currentData.hitResult.createAnchor === "function") {
@@ -44,20 +61,23 @@ export function usePlacementLogic({ isARActive, reticleDataRef, session = null }
             const offset = new THREE.Vector3(0, -0.4, -1.5).applyQuaternion(worldQuat);
             worldPos.add(offset);
 
-            setPlacedPosition(worldPos);
-            setPlacedQuaternion(worldQuat);
+            placedPositionRef.current.copy(worldPos);
+            placedQuaternionRef.current.copy(worldQuat);
         } else {
-            setPlacedPosition(new THREE.Vector3(0, -0.4, -1.5));
-            setPlacedQuaternion(new THREE.Quaternion());
+            placedPositionRef.current.set(0, -0.4, -1.5);
+            placedQuaternionRef.current.identity();
         }
+
+        isPlacedRef.current = true;
+        isRepositioningRef.current = false;
         setIsPlaced(true);
         setIsRepositioning(false);
         return true;
     }, [reticleDataRef]);
 
     const updateAnchoredPose = useCallback((pos, quat) => {
-        setPlacedPosition(pos);
-        if (quat) setPlacedQuaternion(quat);
+        if (pos) placedPositionRef.current.copy(pos);
+        if (quat) placedQuaternionRef.current.copy(quat);
     }, []);
 
     /**
@@ -68,6 +88,7 @@ export function usePlacementLogic({ isARActive, reticleDataRef, session = null }
             try { anchorRef.current.delete(); } catch (_) { }
         }
         anchorRef.current = null;
+        isRepositioningRef.current = true;
         setIsRepositioning(true);
     }, []);
 
@@ -86,10 +107,12 @@ export function usePlacementLogic({ isARActive, reticleDataRef, session = null }
             try { anchorRef.current.delete(); } catch (_) { }
         }
         anchorRef.current = null;
+        isPlacedRef.current = false;
+        isRepositioningRef.current = false;
         setIsPlaced(false);
         setIsRepositioning(false);
-        setPlacedPosition(new THREE.Vector3(0, 0, 0));
-        setPlacedQuaternion(new THREE.Quaternion());
+        placedPositionRef.current.set(0, 0, 0);
+        placedQuaternionRef.current.identity();
         setScale(1.0);
         setYRotation(0);
     }, []);
@@ -99,8 +122,8 @@ export function usePlacementLogic({ isARActive, reticleDataRef, session = null }
         if (!isARActive || !session) return;
 
         const handleSelect = () => {
-            // Only place if not placed yet or currently repositioning
-            if (!isPlaced || isRepositioning) {
+            // ONLY place if NOT placed yet OR currently repositioning!
+            if (!isPlacedRef.current || isRepositioningRef.current) {
                 placeObject();
             }
         };
@@ -109,17 +132,19 @@ export function usePlacementLogic({ isARActive, reticleDataRef, session = null }
         return () => {
             session.removeEventListener("select", handleSelect);
         };
-    }, [isARActive, isPlaced, isRepositioning, placeObject, session]);
+    }, [isARActive, placeObject, session]);
 
     return {
         isPlaced,
-        placedPosition,
-        placedQuaternion,
+        isPlacedRef,
+        placedPositionRef,
+        placedQuaternionRef,
         scale,
         setScale,
         yRotation,
         setYRotation,
         isRepositioning,
+        isRepositioningRef,
         anchorRef,
         updateAnchoredPose,
         placeObject,

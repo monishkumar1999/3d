@@ -43,8 +43,11 @@ const PatternZone = ({ meshName, maskUrl, stickerUrl, onUpdateTexture, onSticker
     });
 
     useEffect(() => {
-        if (!zoneMode) setTimeout(() => triggerExport(), 100);
-    }, [zones, zoneMode]);
+        if (maskImg && !zoneMode) {
+            const timer = setTimeout(() => triggerExport(), 150);
+            return () => clearTimeout(timer);
+        }
+    }, [stickers, textNodes, zones, zoneMode, maskImg]);
 
     if (!maskImg) return <div className="w-[300px] h-[300px] bg-black rounded-lg animate-pulse" />;
 

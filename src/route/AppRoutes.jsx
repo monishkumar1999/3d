@@ -12,6 +12,7 @@ import GlbMeshInspector from "../product_config/GlbMeshInspector";
 import ProductConfigList from "../product_config/ProductConfigList";
 import MeshConfigList from "../product_config/MeshConfigList";
 import TestSDK from "../sdkComponent/TestSDK.jsx";
+import SavedDesignsPage from "../components/SavedDesignsPage";
 
 // ----------------------------------
 
@@ -31,6 +32,7 @@ const AppRoutes = () => {
         <Route path="/subcategories" element={<SubCategoryManager />} />
         <Route path="/products" element={<ProductList />} />
         <Route path="/product/edit/:id" element={<ProductEditor />} />
+        <Route path="/saved-designs" element={<SavedDesignsPage />} />
         <Route path="/uvMap/:productId" element={<UvMap />} />
         <Route path="/uvMap" element={<UvMap />} />
         <Route path="/svg-converter" element={<SvgConverter />} />

@@ -62,6 +62,25 @@ const uvMapSlice = createSlice({
         ...updates,
       };
     },
+    loadDesignData: (state, action) => {
+      const { meshStickers = {}, meshTextNodes = {}, meshZones = {}, globalMaterial = {} } = action.payload || {};
+      if (globalMaterial && Object.keys(globalMaterial).length > 0) {
+        state.globalMaterial = { ...state.globalMaterial, ...globalMaterial };
+      }
+      const allMeshNames = new Set([
+        ...Object.keys(meshStickers),
+        ...Object.keys(meshTextNodes),
+        ...Object.keys(meshZones),
+      ]);
+      allMeshNames.forEach((meshName) => {
+        state.patternStates[meshName] = {
+          ...(state.patternStates[meshName] || initialPatternState),
+          stickers: meshStickers[meshName] || [],
+          textNodes: meshTextNodes[meshName] || [],
+          zones: meshZones[meshName] || [],
+        };
+      });
+    },
     resetProject: () => initialState,
   }
 });
@@ -69,7 +88,7 @@ const uvMapSlice = createSlice({
 export const {
   setPhase, setGlbUrl, setMeshList, setMeshTextures, updateMeshTexture,
   setGlobalMaterial, setActiveStickerUrl, setProductName, setSubcategory,
-  initPatternState, updatePatternState, resetProject
+  initPatternState, updatePatternState, loadDesignData, resetProject
 } = uvMapSlice.actions;
 
 export default uvMapSlice.reducer;

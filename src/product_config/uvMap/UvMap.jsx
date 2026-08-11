@@ -1,14 +1,21 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
+import { useDispatch } from "react-redux";
 import SetupPhase from "./SetupPhase/SetupPhase";
 import DesignPhase from "./DesignPhase/DesignPhase";
 import { useProductLoader } from "./hooks/useProductLoader";
 import { useVariantTextures } from "./hooks/useVariantTextures";
 import { useUvHandlers } from "./hooks/useUvHandlers";
 import { VariantSelector } from "./Toolbar/VariantSelector";
+import { loadDesignData } from "../../store/redux/uvMapSlice";
+import api from "../../api/axios";
 
 export default function UvMap() {
     const { productId } = useParams();
+    const [searchParams] = useSearchParams();
+    const designId = searchParams.get("designId");
+    const dispatch = useDispatch();
+
     const [phase, setPhase] = useState("setup");
     const [meshList, setMeshList] = useState([]);
     const [meshTextures, setMeshTextures] = useState({});
@@ -20,6 +27,28 @@ export default function UvMap() {
     const { handleGlb, handleMaskUpload, applyTexture } = useUvHandlers(glbUrl, setGlbUrl, setMeshList, setMeshConfig, setMeshTextures);
 
     const checkedProductRef = useRef(null);
+
+    // Fetch design details if designId query param is provided
+    useEffect(() => {
+        if (!designId) return;
+        const fetchDesign = async () => {
+            try {
+                const res = await api.get(`/product/design/${designId}`);
+                const data = res.data;
+                if (data && data.designData) {
+                    const parsedData = typeof data.designData === 'string' ? JSON.parse(data.designData) : data.designData;
+                    dispatch(loadDesignData(parsedData));
+                    if (parsedData.globalMaterial) {
+                        setGlobalMaterial(prev => ({ ...prev, ...parsedData.globalMaterial }));
+                    }
+                    setPhase("design");
+                }
+            } catch (err) {
+                console.error("Failed to load design:", err);
+            }
+        };
+        fetchDesign();
+    }, [designId, dispatch]);
 
     // Auto-jump to design phase if the product already has saved meshes
     useEffect(() => {

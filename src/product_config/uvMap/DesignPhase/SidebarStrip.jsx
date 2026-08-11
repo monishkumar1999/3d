@@ -1,5 +1,5 @@
 import React from "react";
-import { Image as ImageIcon, Type, Palette, ChevronLeft } from "lucide-react";
+import { Image as ImageIcon, Type, Palette, ChevronLeft, FolderHeart } from "lucide-react";
 
 const TooltipButton = ({ icon: Icon, label, onClick, isActive }) => (
     <div className="relative group flex flex-col items-center">
@@ -15,7 +15,7 @@ const TooltipButton = ({ icon: Icon, label, onClick, isActive }) => (
     </div>
 );
 
-export const SidebarStrip = ({ sidebarOpen, setSidebarOpen, onBack }) => {
+export const SidebarStrip = ({ sidebarOpen, setSidebarOpen, onBack, onOpenSavedDesigns }) => {
     return (
         <div className="w-20 bg-white border-r border-zinc-200 flex flex-col items-center py-6 z-50 shadow-[4px_0_24px_rgba(0,0,0,0.02)] h-full">
             <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-black text-xl shadow-lg shadow-indigo-200 mb-8">
@@ -31,6 +31,7 @@ export const SidebarStrip = ({ sidebarOpen, setSidebarOpen, onBack }) => {
                 />
                 <TooltipButton icon={Type} label="Text" />
                 <TooltipButton icon={Palette} label="Color" />
+                <TooltipButton icon={FolderHeart} label="Saved Designs" onClick={onOpenSavedDesigns} />
             </div>
 
             <div className="mt-auto">
