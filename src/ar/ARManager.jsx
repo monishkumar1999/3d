@@ -28,7 +28,6 @@ function ARModelGroup({
     modelProps,
     reticleDataRef,
     placement,
-    finalQuaternion
 }) {
     const groupRef = useRef(null);
     const { camera } = useThree();
@@ -44,10 +43,17 @@ function ARModelGroup({
             return;
         }
 
-        if (placement.isPlaced && !placement.isRepositioning) {
-            // Anchored state: lock strictly at physical world position and rotation
+        if (placement.isPlacedRef.current && !placement.isRepositioningRef.current) {
+            // Anchored state: lock strictly at physical world space position and rotation
             groupRef.current.position.copy(placement.placedPositionRef.current);
-            groupRef.current.quaternion.copy(finalQuaternion);
+
+            // Combine placed world orientation with user Y-axis rotation gesture
+            const q = placement.placedQuaternionRef.current.clone();
+            if (placement.yRotation !== 0) {
+                const yRotQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), placement.yRotation);
+                q.multiply(yRotQuat);
+            }
+            groupRef.current.quaternion.copy(q);
             groupRef.current.scale.set(placement.scale, placement.scale, placement.scale);
         } else {
             // Placement / Scanning preview state: follow hit-test reticle or camera world position
@@ -58,7 +64,7 @@ function ARModelGroup({
                     groupRef.current.quaternion.copy(currentData.quaternion);
                 }
             } else if (camera) {
-                // World position 1.5m in front of camera
+                // World position 1.5m in front of camera during surface search
                 const worldPos = new THREE.Vector3();
                 const worldQuat = new THREE.Quaternion();
                 camera.getWorldPosition(worldPos);
@@ -131,7 +137,7 @@ function ARSceneContent({
 
     // Per-frame hardware spatial anchor pose update from ARCore / ARKit
     useFrame((state, delta, xrFrame) => {
-        if (!isARActive || !placement.isPlaced || placement.isRepositioning) return;
+        if (!isARActive || !placement.isPlacedRef.current || placement.isRepositioningRef.current) return;
         const anchor = placement.anchorRef?.current;
         if (!anchor || !xrFrame) return;
 
@@ -154,16 +160,6 @@ function ARSceneContent({
 
     // Disable OrbitControls during WebXR AR Session
     const isOrbitEnabled = !isARActive;
-
-    // Calculate final model rotation (Base surface quaternion combined with gesture Y-axis rotation)
-    const finalQuaternion = React.useMemo(() => {
-        const q = placement.placedQuaternionRef.current.clone();
-        if (placement.yRotation !== 0) {
-            const yRotQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), placement.yRotation);
-            q.multiply(yRotQuat);
-        }
-        return q;
-    }, [placement.placedQuaternionRef, placement.yRotation]);
 
     return (
         <>
@@ -196,7 +192,6 @@ function ARSceneContent({
                         modelProps={modelProps}
                         reticleDataRef={reticleDataRef}
                         placement={placement}
-                        finalQuaternion={finalQuaternion}
                     />
                 </Center>
             ) : (
@@ -206,7 +201,6 @@ function ARSceneContent({
                     modelProps={modelProps}
                     reticleDataRef={reticleDataRef}
                     placement={placement}
-                    finalQuaternion={finalQuaternion}
                 />
             )}
         </>
